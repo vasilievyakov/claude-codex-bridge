@@ -1,10 +1,12 @@
 # claude-codex-bridge
 
+[![tests](https://github.com/vasilievyakov/claude-codex-bridge/actions/workflows/tests.yml/badge.svg)](https://github.com/vasilievyakov/claude-codex-bridge/actions/workflows/tests.yml) [![license: MIT](https://img.shields.io/badge/license-MIT-d4ff3f?labelColor=0b0b0c)](LICENSE) [![site](https://img.shields.io/badge/site-vasilievyakov.github.io%2Fclaude--codex--bridge-0b0b0c?labelColor=d4ff3f)](https://vasilievyakov.github.io/claude-codex-bridge/)
+
 Claude Code оркестрирует. OpenAI Codex CLI это вторая модель. Два скилла делают это конкретным: `second-opinion` просит у Codex независимое ревью в read-only песочнице и получает находки в виде JSON, которые Claude затем проверяет по исходнику, прежде чем что-то чинить; `codex-worker` отдает Codex полностью описанную задачу в изолированном git worktree и получает патч, который никогда не применяется без тебя. У двух моделей нет общей памяти. Все, что проходит между ними, это файл, который можно открыть.
 
 Репозиторий для участников лаборатории [Agentic Lab](https://ai-lab-agents.com), программы по агентной инженерии. Открыт для всех, кто хочет такую же связку.
 
-English version: [README.md](README.md). Install text for the agent: [INSTALL.md](INSTALL.md).
+Сайт: [vasilievyakov.github.io/claude-codex-bridge](https://vasilievyakov.github.io/claude-codex-bridge/?lang=ru). English version: [README.md](README.md). Install text for the agent: [INSTALL.md](INSTALL.md).
 
 ## Отдай это своему агенту
 

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>og</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geologica:wght@800&family=Onest:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+html,body{margin:0;width:1200px;height:630px;overflow:hidden;background:#0b0b0c;color:#f3f0e8;font-family:"Onest",system-ui,sans-serif}
+.card{position:relative;width:1200px;height:630px;padding:64px 72px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;background:
+  linear-gradient(90deg, rgba(42,42,45,.7) 1px, transparent 1px) 0 0/80px 80px,
+  linear-gradient(0deg, rgba(42,42,45,.7) 1px, transparent 1px) 0 0/80px 80px, #0b0b0c}
+.label{font-family:"JetBrains Mono",monospace;font-size:20px;letter-spacing:.14em;text-transform:uppercase;color:#9bbf2a;font-weight:500}
+h1{font-family:"Geologica",sans-serif;font-weight:800;font-size:96px;line-height:.98;letter-spacing:-.03em;margin:22px 0 0;max-width:1000px}
+h1 span{color:#d4ff3f}
+.sub{font-size:28px;line-height:1.4;color:#b8b4a8;max-width:900px;margin-top:26px}
+.foot{display:flex;justify-content:space-between;align-items:center;font-family:"JetBrains Mono",monospace;font-size:22px;color:#6f6c63}
+.pill{display:inline-flex;align-items:center;gap:14px;background:#141416;border:1px solid #2a2a2d;border-radius:999px;padding:14px 26px;color:#f3f0e8}
+.pill i{display:inline-block;width:14px;height:14px;border-radius:50%;background:#d4ff3f}
+.arrow{position:absolute;right:72px;top:64px;width:120px;height:120px;border-radius:24px;background:#141416;border:1px solid #2a2a2d}
+.arrow::before{content:"";position:absolute;left:28px;right:28px;top:58px;height:6px;background:#d4ff3f;border-radius:3px}
+.arrow::after{content:"";position:absolute;right:26px;top:41px;width:32px;height:32px;border-top:6px solid #d4ff3f;border-right:6px solid #d4ff3f;transform:rotate(45deg);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div>
+    <div class="label">claude-codex-bridge · Agentic Lab · open source</div>
+    <h1>Two models,<br>one <span>file</span> between them.</h1>
+    <p class="sub">Claude Code orchestrates. Codex CLI reviews and implements in a sandbox. Findings as JSON, fixes as patches, nothing applied without you.</p>
+  </div>
+  <div class="foot">
+    <span class="pill"><i></i>second-opinion · codex-worker</span>
+    <span>github.com/vasilievyakov/claude-codex-bridge</span>
+  </div>
+  <div class="arrow"></div>
+</div>
+</body>
+</html>
