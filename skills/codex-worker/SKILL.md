@@ -1,7 +1,7 @@
 ---
 name: codex-worker
 description: >-
-  Delegate a finished, fully specified coding task to an OpenAI Codex worker: an isolated git worktree, the workspace-write sandbox, the result as a patch plus a JSON report, and the patch is never applied without confirmation. Use when: the user says "hand it to Codex", "let Codex do it", "codex worker", "/codex-worker" (in Russian: "отдай Codex", "пусть Codex сделает"), or when the orchestrator wants to fan out independent, fully specified subtasks to a different model in parallel. Not for review (use second-opinion) and not for interactive single delegation with background job management (that is /codex:rescue from the Codex plugin).
+  Delegate a finished, fully specified coding task to an OpenAI Codex worker: an isolated git worktree, the workspace-write sandbox, the result as a patch plus a JSON report, and the patch is never applied without confirmation. Use when: the user says "give this task to Codex", "hand it to Codex", "let Codex do it", "clean up the Codex worker", "codex worker", "/codex-worker" (in Russian: "отдай Codex задачу", "пусть Codex сделает", "прибери воркера Codex"), or when the orchestrator wants to fan out independent, fully specified subtasks to a different model in parallel. Not for review (use second-opinion) and not for interactive single delegation with background job management (that is /codex:rescue from the Codex plugin).
 ---
 
 # Codex worker

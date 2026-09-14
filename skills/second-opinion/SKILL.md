@@ -1,7 +1,7 @@
 ---
 name: second-opinion
 description: >-
-  Second opinion from OpenAI Codex on a diff, a file or a plan: an independent read-only reviewer on a different model returns schema-constrained findings, then Claude adjudicates each finding against the source. Use when: the user says "second opinion", "ask Codex", "let Codex take a look", "codex review", "/second-opinion" (in Russian: "второе мнение", "спроси Codex", "пусть Codex посмотрит"), or after a nontrivial change when a cross-model check adds value. Not for delegating implementation to Codex (that is the codex-worker skill, or /codex:rescue from the Codex plugin) and not a replacement for the plugin's /codex:review.
+  Second opinion from OpenAI Codex on a diff, a file or a plan: an independent read-only reviewer on a different model returns schema-constrained findings, then Claude adjudicates each finding against the source. Use when: the user says "second opinion", "ask Codex", "let Codex take a look", "argue finding N with Codex", "codex review", "/second-opinion" (in Russian: "второе мнение", "спроси Codex", "пусть Codex посмотрит", "поспорь с Codex"), or after a nontrivial change when a cross-model check adds value. Not for delegating implementation to Codex (that is the codex-worker skill, or /codex:rescue from the Codex plugin) and not a replacement for the plugin's /codex:review.
 ---
 
 # Second opinion

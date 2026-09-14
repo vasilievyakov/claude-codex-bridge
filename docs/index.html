@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>claude-codex-bridge</title>
-<meta name="description" content="Claude Code orchestrates, OpenAI Codex CLI reviews and implements. Two Agent Skills, a file-based exchange, patches never applied without you. Built for Agentic Lab participants, open to everyone.">
+<meta name="description" content="You work in Claude Code. This adds a second AI, OpenAI Codex, for two jobs: look at your code with fresh eyes, and do a side task while you keep working. Nothing in your project changes until you say yes. Built for Agentic Lab participants, open to everyone.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="claude-codex-bridge">
 <meta property="og:description" content="Two models, one file between them. Claude Code orchestrates, Codex CLI reviews and implements. Open source, for Agentic Lab participants and anyone else.">
@@ -32,7 +32,7 @@ body{margin:0;background:var(--ink);color:var(--bone);font-family:var(--font-bod
 a{color:var(--bone);text-decoration:none}
 a:hover{color:var(--lime)}
 .wrap{max-width:var(--container);margin:0 auto;min-width:0}
-main,section,.hero>*,.stack,.rows,.row,.row .body,.cards,.card,.two,.tablewrap,.paste,.stats,.stats>div,ul.plain,footer{min-width:0}
+main,section,.hero>*,.stack,.rows,.row,.row .body,.cards,.card,.two,.tablewrap,.paste,.stats,.stats>div,ul.plain,ol.steps,.output,footer{min-width:0}
 [data-lang="en"] [lang="ru"]{display:none}
 [data-lang="ru"] [lang="en"]{display:none}
 .label{font-family:var(--font-mono);font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--lime-dim)}
@@ -92,6 +92,7 @@ td{color:var(--bone-dim)}
 td:first-child{color:var(--bone)}
 tr:last-child td{border-bottom:0}
 .tablewrap{border:1px solid var(--line);border-radius:var(--r-xl);overflow:auto;background:var(--ink)}
+.tablewrap table.wide{min-width:640px}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .card{background:var(--ink-2);border:1px solid var(--line);border-radius:var(--r-xl);padding:28px;display:grid;gap:12px;align-content:start}
 .card p{color:var(--bone-dim);font-size:15px}
@@ -102,6 +103,11 @@ tr:last-child td{border-bottom:0}
 ul.plain{margin:0;padding:0;list-style:none;display:grid;gap:10px}
 ul.plain li{color:var(--bone-dim);padding-left:20px;position:relative}
 ul.plain li::before{content:"";position:absolute;left:0;top:.72em;width:8px;height:2px;background:var(--lime)}
+ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:12px;max-width:72ch}
+ol.steps li{counter-increment:s;position:relative;padding-left:44px;color:var(--bone-dim)}
+ol.steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:.3em;font-family:var(--font-mono);font-size:13px;font-weight:500;letter-spacing:.04em;color:var(--lime-dim);font-variant-numeric:tabular-nums}
+.note{color:var(--bone-dim);max-width:72ch;margin-top:20px}
+.output{display:grid;gap:12px;margin-top:40px}
 footer{margin-top:96px;padding-top:28px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:var(--bone-faint);font-size:14px}
 footer a{color:var(--bone-dim)}
 .tag{color:var(--coral)}
@@ -129,16 +135,16 @@ footer a{color:var(--bone-dim)}
   <div class="stack">
     <span class="label">Agentic Lab · open source · MIT</span>
     <h1>Two models, one file between them.</h1>
-    <p class="lead">Claude Code orchestrates. OpenAI Codex CLI is the second model: it reviews your diff read-only and returns findings as JSON, or takes a fully specified task into an isolated git worktree and returns a patch. Nothing is applied without you. Everything that passes between the two models is a file you can open.</p>
+    <p class="lead">You work in Claude Code. This adds a second AI, OpenAI Codex, for two jobs: look at your code with fresh eyes, and do a side task while you keep working. Codex runs in a sandbox and answers with files. Claude reads those files and shows you the result. Nothing in your project changes until you say yes.</p>
     <div class="ctas">
       <a class="btn primary" href="#install">Give it to your agent</a>
-      <a class="btn" href="#how">How one run works</a>
+      <a class="btn" href="#use">How to use it</a>
     </div>
   </div>
   <div class="paste">
     <header><span class="label">Paste into Claude Code</span><button class="copy" data-copy="paste-en">Copy</button></header>
     <pre id="paste-en">Install claude-codex-bridge: read https://raw.githubusercontent.com/vasilievyakov/claude-codex-bridge/main/INSTALL.md first, then do every step, adapt to this machine, verify, and report what you changed.</pre>
-    <p style="color:var(--bone-faint);font-size:13px">The agent checks versions, links two skills into Claude Code and Codex, wires one shared AGENTS.md, runs the tests. A human can follow INSTALL.md by hand: every step is a command, none is a click.</p>
+    <p style="color:var(--bone-faint);font-size:13px">The agent installs everything and reports what it changed. It never overwrites your files. To do it by hand, follow INSTALL.md; every step is a command.</p>
   </div>
 </section>
 
@@ -149,40 +155,75 @@ footer a{color:var(--bone-dim)}
   <div><b>0</b><span>patches applied without your yes</span></div>
 </div>
 
+<section id="what">
+  <div class="sec-head">
+    <span class="label">What you get</span>
+    <h2>Two jobs, and you can watch both</h2>
+  </div>
+  <div class="cards">
+    <div class="card">
+      <span class="label">Second opinion</span>
+      <h3>Fresh eyes on your changes</h3>
+      <p>Say "ask Codex for a second opinion" in Claude Code. Codex reads your changes without touching them and returns a list of problems, each with a file and line. Claude checks every item against the code and tells you which ones are real. Twenty seconds in the demo.</p>
+    </div>
+    <div class="card">
+      <span class="label">Worker</span>
+      <h3>A side task done in a separate copy</h3>
+      <p>Say "give this task to Codex". Codex does it in a separate copy of your repository and returns a patch. You see the diff and decide. Several workers can run at once.</p>
+    </div>
+    <div class="card">
+      <span class="label">You can watch</span>
+      <h3>Nothing runs in the dark</h3>
+      <p>Progress lines in the terminal while Codex works, a <code>codex:N</code> counter in the status line, a live table in a second window.</p>
+    </div>
+  </div>
+</section>
+
+<section id="use">
+  <div class="sec-head">
+    <span class="label">How to use it day to day</span>
+    <h2>You say it in plain words, Claude does the rest</h2>
+  </div>
+  <div class="tablewrap">
+    <table class="wide">
+      <thead><tr><th>You say in Claude Code</th><th>What happens</th><th>What you see</th></tr></thead>
+      <tbody>
+        <tr><td>"Ask Codex for a second opinion on my changes"</td><td>Codex reviews your uncommitted changes, read-only</td><td>Progress lines, then a table: each finding with a verdict (Confirmed, Refuted, Out of scope, Uncertain) and the question what to fix</td></tr>
+        <tr><td>"Ask Codex to review the plan in docs/plan.md"</td><td>Same, for a document instead of a diff</td><td>Same table</td></tr>
+        <tr><td>"Ask Codex to look at src/billing.py, focus on rounding"</td><td>Same, for named files with a focus</td><td>Same table</td></tr>
+        <tr><td>"Give Codex the task: implement parse_date in src/dates.py, tests in tests/test_dates.py, run pytest"</td><td>Codex works in its own copy of the repo</td><td>Status, summary, what it ran to verify, the diff, and the question whether to apply it</td></tr>
+        <tr><td>"Argue finding 2 with Codex: there is a check on line 41"</td><td>The same Codex thread continues</td><td>Its answer</td></tr>
+        <tr><td>"Clean up the Codex worker"</td><td>Removes the worker's copy</td><td>Confirmation</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Two rules of thumb. A task for the worker has to be complete: what to do, where, how to check, what not to touch. Codex does not ask questions, it assumes and lists its assumptions. And every run spends Codex quota, so ask for a review after a real change, not after every typo.</p>
+</section>
+
 <section id="how">
   <div class="sec-head">
-    <span class="label">One run, walked through</span>
-    <h2>What actually happens between the two models</h2>
-    <p class="lead">This is the review half of <code>demo.sh</code>: a tiny repo with a planted bug. A review of a real diff has the same shape.</p>
+    <span class="label">What happens under the hood</span>
+    <h2>Six steps, and every one of them is a file</h2>
+    <p class="lead">The two models never talk to each other. Everything between them is a file you can open.</p>
   </div>
-  <div class="rows">
-    <div class="row"><span class="num">01</span><div class="body">
-      <h3>Claude writes the task</h3>
-      <p>The <strong>second-opinion</strong> skill fires on "second opinion", "ask Codex" or <code>/second-opinion</code>. Claude picks the scope (uncommitted changes by default, or a base branch, a commit, files, a plan) and a focus, then runs one command.</p>
-      <pre><code>bash &lt;skill-dir&gt;/scripts/second-opinion.sh --repo &lt;repo&gt; --file pricing.py --file tests/test_pricing.py \
-  --effort medium --label demo --focus <span class="s">"Check apply_discount against its docstring and the tests."</span></code></pre>
-    </div></div>
-    <div class="row"><span class="num">02</span><div class="body">
-      <h3>The script builds a prompt and starts Codex</h3>
-      <p>A Markdown prompt (2.6 KB in the demo): a role paragraph, the scope, the focus, what counts as a finding, the rules, the output format. Then <code>codex exec</code> with fixed flags. Codex never asks a question and cannot write to disk.</p>
-      <pre><code>codex exec <span class="k">-s read-only</span> -c 'sandbox_mode="read-only"' -c 'approval_policy="never"' \
-  --skip-git-repo-check -C &lt;repo&gt; -c 'model_reasoning_effort="medium"' \
-  <span class="k">--output-schema</span> findings.schema.json --json -o &lt;out&gt;.json "$(cat &lt;out&gt;.prompt.md)" &lt;/dev/null</code></pre>
-    </div></div>
-    <div class="row"><span class="num">03</span><div class="body">
-      <h3>Codex works inside the sandbox</h3>
-      <p>It decides what to read. In the demo it numbered both files, searched the tree for other callers and ran the failing test itself. Each action is a JSON event; one line per event reaches your terminal while you wait.</p>
-      <pre><code><span class="c">[codex demo 00:01]</span> thread 01a0a01d-c869-7952-9244-feefa7f8a349
+  <ol class="steps">
+    <li>Claude writes a task into a text file.</li>
+    <li>A script starts Codex in a sandbox: read-only for a review, write access to one separate copy for a worker.</li>
+    <li>Codex reads the code, may run the tests, and answers with a JSON file in a fixed format.</li>
+    <li>The script checks the answer, saves it next to the log, and prints the paths.</li>
+    <li>Claude opens every finding in the code and marks it real or not.</li>
+    <li>A fix comes back as a patch. Claude shows it and applies it only after you say so.</li>
+  </ol>
+  <div class="output">
+    <span class="label">Real output from the demo run: what you see while Codex works</span>
+    <pre><code><span class="c">[codex demo 00:01]</span> thread 01a0a01d-c869-7952-9244-feefa7f8a349
 <span class="c">[codex demo 00:07]</span> message: I'll read both files and check the discount calculation against its documented behavior and tests.
 <span class="c">[codex demo 00:08]</span> <span class="a">run:</span> nl -ba pricing.py &amp;&amp; nl -ba tests/test_pricing.py
 <span class="c">[codex demo 00:11]</span> <span class="a">run:</span> rg -n 'apply_discount|pricing' . &amp;&amp; PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest tests.test_pricing
 <span class="c">[codex demo 00:11]</span> <span class="d">exit 1:</span> ./pricing.py:4:def apply_discount(price: float, pct: float) -&gt; float:...
 <span class="c">[codex demo 00:20]</span> turn completed: in 68934 (cached 45056), out 448</code></pre>
-    </div></div>
-    <div class="row"><span class="num">04</span><div class="body">
-      <h3>Codex returns one JSON document</h3>
-      <p>Summary, verdict, coverage (what it did not check) and a list of findings. The finding from this run, as delivered. The script validates it against the schema and prints the file paths as its first lines.</p>
-      <pre><code>{
+    <span class="label">The finding Codex returned, as delivered</span>
+    <pre><code>{
   <span class="a">"severity"</span>: <span class="d">"P1"</span>,
   <span class="a">"title"</span>: <span class="s">"Percentage is used as a fraction without conversion"</span>,
   <span class="a">"location"</span>: <span class="s">"pricing.py:9"</span>,
@@ -191,55 +232,45 @@ footer a{color:var(--bone-dim)}
   <span class="a">"evidence"</span>: <span class="s">"pricing.py:7 states that 10 means ten percent off, but line 9 returns price * (1 - pct). tests/test_pricing.py:8 expects 90.0; executing that test confirmed the actual result was -900.0."</span>,
   <span class="a">"confidence"</span>: <span class="s">"high"</span>
 }</code></pre>
-    </div></div>
-    <div class="row"><span class="num">05</span><div class="body">
-      <h3>Claude checks the source, not Codex's word</h3>
-      <p>For each finding Claude opens the location and marks it <strong>Confirmed</strong>, <strong>Refuted</strong>, <strong>Out of scope</strong> or <strong>Uncertain</strong>, with a file and line as the receipt. Then it asks you what to fix. To argue with a finding, the same Codex thread continues with <code>--resume</code>.</p>
-    </div></div>
-    <div class="row"><span class="num">06</span><div class="body">
-      <h3>The fix goes through a worker</h3>
-      <p>The <strong>codex-worker</strong> skill creates a worktree on branch <code>codex/&lt;label&gt;</code>, hands Codex the task with the files to read first, and runs it with write access to that worktree only. The script snapshots the diff from outside the sandbox and validates the JSON report. You see the diffstat and the patch; it is applied only after you say so.</p>
-      <pre><code><span class="c">status: done</span>
-<span class="c">verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -t .  -&gt;  passed</span>
- pricing.py | 2 +-
-<span class="d">-    return price * (1 - pct)</span>
-<span class="k">+    return price * (1 - pct / 100)</span></code></pre>
-    </div></div>
+    <div class="ctas" style="margin-top:8px">
+      <a class="btn" href="https://github.com/vasilievyakov/claude-codex-bridge/blob/main/docs/how-it-works.md">Full walk-through with real output</a>
+    </div>
   </div>
-  <div class="tablewrap" style="margin-top:16px">
+</section>
+
+<section id="where">
+  <div class="sec-head">
+    <span class="label">Where things are</span>
+    <h2>Small enough to read in one sitting</h2>
+  </div>
+  <div class="tablewrap">
     <table>
-      <thead><tr><th>Measured on this run</th><th>Wall clock</th><th>Input tokens</th><th>of which cached</th><th>Output tokens</th></tr></thead>
+      <thead><tr><th>Folder</th><th>What is inside</th></tr></thead>
       <tbody>
-        <tr><td>Review (second-opinion)</td><td>20 s</td><td>68 934</td><td>45 056</td><td>448</td></tr>
-        <tr><td>Fix (codex-worker)</td><td>15 s</td><td>69 728</td><td>45 696</td><td>409</td></tr>
-        <tr><td>Whole demo, effort medium</td><td>39 s</td><td></td><td></td><td></td></tr>
+        <tr><td>skills/second-opinion/</td><td>The review skill: instructions for Claude, the script, the answer format, tests</td></tr>
+        <tr><td>skills/codex-worker/</td><td>The worker skill: same shape</td></tr>
+        <tr><td>extras/</td><td>Optional: live table of Codex processes, status line counter, a template for one instructions file both agents read</td></tr>
+        <tr><td>demo.sh</td><td>One real run on a throwaway repo</td></tr>
+        <tr><td>INSTALL.md, INSTALL.ru.md</td><td>The install text for your agent</td></tr>
+        <tr><td>docs/</td><td>The site and the detailed walk-through</td></tr>
+        <tr><td>~/.cache/second-opinion/, ~/.cache/codex-worker/</td><td>Everything a run produced: prompt, log, answer, patch. Written by the scripts, not by you</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<section id="box">
+<section id="wrong">
   <div class="sec-head">
-    <span class="label">What is in the box</span>
-    <h2>Small enough to read in one sitting, and every file has an owner</h2>
+    <span class="label">When something goes wrong</span>
+    <h2>Read the log first</h2>
   </div>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>Path</th><th>What it is</th><th>Who edits it</th></tr></thead>
-      <tbody>
-        <tr><td>skills/second-opinion/SKILL.md</td><td>What Claude does to run a review and adjudicate findings</td><td>You, rarely</td></tr>
-        <tr><td>skills/second-opinion/scripts/second-opinion.sh</td><td>The contract: flags, sandbox, prompt template, schema check, Markdown render</td><td>Nobody by hand. New behaviour is a new flag with a test</td></tr>
-        <tr><td>skills/codex-worker/SKILL.md</td><td>What Claude does to write a task, launch a worker, read the patch</td><td>You, rarely</td></tr>
-        <tr><td>skills/codex-worker/scripts/codex-worker.sh</td><td>The contract: worktree, sandbox, prompt, patch snapshot, worker state, resume, list, cleanup</td><td>Contract</td></tr>
-        <tr><td>skills/*/scripts/*.schema.json</td><td>What Codex must return</td><td>Contract</td></tr>
-        <tr><td>skills/*/scripts/progress.py</td><td>Codex event stream to one line per action; identical copy in both skills, CI checks they match</td><td>Contract</td></tr>
-        <tr><td>skills/*/tests/run.sh</td><td>Fake codex on PATH, no network, no cost</td><td>Run before a change</td></tr>
-        <tr><td>extras/</td><td>codex-watch live table, status line indicator, shared AGENTS.md template</td><td>Optional, you</td></tr>
-        <tr><td>demo.sh</td><td>One real run, end to end, on a throwaway repo</td><td>Run it</td></tr>
-        <tr><td>~/.cache/second-opinion, ~/.cache/codex-worker</td><td>Prompts, event logs, JSON, patches, worker state, worktrees</td><td>Written at run time, never by you</td></tr>
-      </tbody>
-    </table>
-  </div>
+  <ul class="plain">
+    <li>The script prints <code>exit:</code> and <code>log:</code> paths. Read the log first.</li>
+    <li>Exit code 2: wrong arguments. 3: Codex answered outside the format, the raw answer is at the <code>json:</code> path. 4 (worker only): branch or worktree already exists, change the label or clean up. 124: time limit.</li>
+    <li><code>--dry-run</code> prints the exact Codex command and the prompt without running anything.</li>
+    <li>Codex sees only what it is given: the task, the focus, the files to read, and the shared <code>~/.agents/AGENTS.md</code>. It does not read <code>CLAUDE.md</code>. If it "did not know" something, put it into the focus or the task.</li>
+    <li>Tests without Codex and without cost: <code>bash skills/second-opinion/tests/run.sh</code> and <code>bash skills/codex-worker/tests/run.sh</code>.</li>
+  </ul>
 </section>
 
 <section id="install">
@@ -251,13 +282,13 @@ footer a{color:var(--bone-dim)}
     <div class="card">
       <span class="label">Recommended</span>
       <h3>Give the text to your agent</h3>
-      <p>Open Claude Code on the machine you want to set up and paste the line from the top of this page. The agent reads INSTALL.md, adapts to the machine, verifies, reports. Existing files are backed up, never overwritten.</p>
-      <div class="chips"><span class="chip">Claude Code</span><span class="chip">Codex</span><span class="chip">shared AGENTS.md</span></div>
+      <p>Open Claude Code on your machine and paste the line from the top of this page. The agent installs everything and reports what it changed. It never overwrites your files.</p>
+      <p>Check: open a new Claude Code session and type <code>/second-opinion</code>.</p>
     </div>
     <div class="card">
       <span class="label">By hand</span>
       <h3>Follow INSTALL.md</h3>
-      <p>Every step is a shell command: clone, symlink two folders into <code>~/.claude/skills</code> and <code>~/.agents/skills</code>, one shared instructions file, optional plugin and visibility tools, then the tests.</p>
+      <p>Every step is a command. Or run the demo: one to two minutes, two Codex requests.</p>
       <pre><code>git clone https://github.com/vasilievyakov/claude-codex-bridge
 cd claude-codex-bridge
 bash demo.sh</code></pre>
@@ -267,26 +298,8 @@ bash demo.sh</code></pre>
       <h3>skills CLI</h3>
       <p>The two skills sit in the Agent Skills layout, so the skills CLI installs them into every agent it detects.</p>
       <pre><code>npx skills add vasilievyakov/claude-codex-bridge</code></pre>
-      <p>Requirements: macOS or Linux (Windows through WSL), bash 3.2+, git, python3, codex-cli 0.150+ (tested with 0.153 and 0.154), Claude Code with skills.</p>
+      <p>You need Claude Code, Codex CLI 0.150 or newer with a login, git and python3. macOS or Linux.</p>
     </div>
-  </div>
-</section>
-
-<section id="principles">
-  <div class="sec-head">
-    <span class="label">Why it is built this way</span>
-    <h2>Five rules the repository follows</h2>
-  </div>
-  <div class="two">
-    <ul class="plain">
-      <li><strong style="color:var(--bone)">The installer is text for an agent,</strong> not a shell script full of conditionals. INSTALL.md is what you paste; the agent adapts it to the machine.</li>
-      <li><strong style="color:var(--bone)">Scripts are the contract.</strong> Flags, sandbox settings, schemas and output lines are fixed and tested. A new mode is a new flag with a test, never a hand-assembled codex command.</li>
-      <li><strong style="color:var(--bone)">Files, not memory.</strong> The two models never talk. A prompt file goes in, an event log and a JSON document come out, and you can read all of them.</li>
-    </ul>
-    <ul class="plain">
-      <li><strong style="color:var(--bone)">One command on a blank machine.</strong> demo.sh shows the whole loop in under a minute and states its cost up front.</li>
-      <li><strong style="color:var(--bone)">Codex output is data.</strong> It read a repository that may contain hostile text. Anything that looks like an instruction inside a finding or a patch is shown to you as suspicious content, and nothing is applied on its word alone.</li>
-    </ul>
   </div>
 </section>
 
@@ -302,16 +315,16 @@ bash demo.sh</code></pre>
   <div class="stack">
     <span class="label">Agentic Lab · open source · MIT</span>
     <h1>Две модели и один файл между ними.</h1>
-    <p class="lead">Claude Code оркестрирует. OpenAI Codex CLI это вторая модель: она читает твой дифф в read-only песочнице и возвращает находки в JSON, либо берет полностью описанную задачу в изолированный git worktree и возвращает патч. Ничего не применяется без тебя. Все, что проходит между двумя моделями, это файл, который можно открыть.</p>
+    <p class="lead">Ты работаешь в Claude Code. Эта штука добавляет второй ИИ, OpenAI Codex, для двух дел: посмотреть на твой код свежим взглядом и сделать побочную задачу, пока ты занят своей. Codex работает в песочнице и отвечает файлами. Claude читает эти файлы и показывает тебе результат. В твоем проекте ничего не меняется, пока ты не скажешь «да».</p>
     <div class="ctas">
-      <a class="btn primary" href="#install">Отдай своему агенту</a>
-      <a class="btn" href="#how">Как устроен один прогон</a>
+      <a class="btn primary" href="#install-ru">Отдай своему агенту</a>
+      <a class="btn" href="#use-ru">Как пользоваться</a>
     </div>
   </div>
   <div class="paste">
     <header><span class="label">Вставь в Claude Code</span><button class="copy" data-copy="paste-ru">Копировать</button></header>
     <pre id="paste-ru">Установи claude-codex-bridge: сначала прочитай https://raw.githubusercontent.com/vasilievyakov/claude-codex-bridge/main/INSTALL.ru.md, затем выполни каждый шаг, подстрой под эту машину, проверь и отчитайся, что изменил.</pre>
-    <p style="color:var(--bone-faint);font-size:13px">Агент проверит версии, прилинкует два скилла в Claude Code и Codex, подключит один общий AGENTS.md и прогонит тесты. Человек может пройти INSTALL.ru.md руками: каждый шаг это команда, ни одного клика.</p>
+    <p style="color:var(--bone-faint);font-size:13px">Агент ставит все сам и отчитывается, что изменил. Твои файлы он никогда не перезаписывает. Чтобы сделать руками, пройди INSTALL.ru.md: каждый шаг это команда.</p>
   </div>
 </section>
 
@@ -322,40 +335,75 @@ bash demo.sh</code></pre>
   <div><b>0</b><span>патчей, примененных без твоего да</span></div>
 </div>
 
+<section id="what-ru">
+  <div class="sec-head">
+    <span class="label">Что ты получаешь</span>
+    <h2>Две работы, и обе видно</h2>
+  </div>
+  <div class="cards">
+    <div class="card">
+      <span class="label">Второе мнение</span>
+      <h3>Свежий взгляд на твои изменения</h3>
+      <p>Скажи в Claude Code «спроси у Codex второе мнение». Codex читает твои изменения, ничего не трогая, и возвращает список проблем, каждая с файлом и строкой. Claude проверяет каждый пункт по коду и говорит, какие из них настоящие. Двадцать секунд в демо.</p>
+    </div>
+    <div class="card">
+      <span class="label">Воркер</span>
+      <h3>Побочная задача в отдельной копии</h3>
+      <p>Скажи «отдай эту задачу Codex». Codex делает ее в отдельной копии твоего репозитория и возвращает патч. Ты смотришь дифф и решаешь. Воркеров может быть несколько сразу.</p>
+    </div>
+    <div class="card">
+      <span class="label">Видимость</span>
+      <h3>Ничего не работает втемную</h3>
+      <p>Строки хода в терминале, пока Codex работает, счетчик <code>codex:N</code> в статус-строке, живая таблица во втором окне.</p>
+    </div>
+  </div>
+</section>
+
+<section id="use-ru">
+  <div class="sec-head">
+    <span class="label">Как пользоваться каждый день</span>
+    <h2>Ты говоришь обычными словами, остальное делает Claude</h2>
+  </div>
+  <div class="tablewrap">
+    <table class="wide">
+      <thead><tr><th>Что ты говоришь в Claude Code</th><th>Что происходит</th><th>Что ты видишь</th></tr></thead>
+      <tbody>
+        <tr><td>«Спроси у Codex второе мнение по моим изменениям»</td><td>Codex делает ревью незакоммиченных изменений, только чтение</td><td>Строки хода, затем таблица: каждая находка с вердиктом (подтверждено, опровергнуто, вне области, не проверено) и вопрос, что чинить</td></tr>
+        <tr><td>«Пусть Codex посмотрит план в docs/plan.md»</td><td>То же, для документа вместо диффа</td><td>Та же таблица</td></tr>
+        <tr><td>«Пусть Codex посмотрит src/billing.py, фокус на округлении»</td><td>То же, для названных файлов с фокусом</td><td>Та же таблица</td></tr>
+        <tr><td>«Отдай Codex задачу: реализовать parse_date в src/dates.py, тесты в tests/test_dates.py, прогнать pytest»</td><td>Codex работает в своей копии репозитория</td><td>Статус, сводка, чем он проверял, дифф и вопрос, применять ли</td></tr>
+        <tr><td>«Поспорь с Codex по находке 2: на строке 41 есть проверка»</td><td>Продолжается тот же тред Codex</td><td>Его ответ</td></tr>
+        <tr><td>«Прибери воркера Codex»</td><td>Удаляет копию воркера</td><td>Подтверждение</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Два правила. Задача воркеру должна быть полной: что сделать, где, как проверить, что не трогать. Codex не задает вопросов: он делает допущения и перечисляет их. И каждый запуск тратит квоту Codex, поэтому проси ревью после настоящей правки, а не после каждой опечатки.</p>
+</section>
+
 <section id="how-ru">
   <div class="sec-head">
-    <span class="label">Один прогон по шагам</span>
-    <h2>Что на самом деле происходит между двумя моделями</h2>
-    <p class="lead">Это половина <code>demo.sh</code> про ревью: крошечный репозиторий с подложенной ошибкой. Ревью настоящего диффа устроено так же.</p>
+    <span class="label">Что происходит под капотом</span>
+    <h2>Шесть шагов, и каждый из них это файл</h2>
+    <p class="lead">Две модели никогда не разговаривают друг с другом. Все между ними это файл, который можно открыть.</p>
   </div>
-  <div class="rows">
-    <div class="row"><span class="num">01</span><div class="body">
-      <h3>Claude пишет задачу</h3>
-      <p>Скилл <strong>second-opinion</strong> срабатывает на «второе мнение», «спроси Codex» или <code>/second-opinion</code>. Claude выбирает область (по умолчанию незакоммиченные изменения, либо ветка, коммит, файлы, план) и фокус, затем запускает одну команду.</p>
-      <pre><code>bash &lt;skill-dir&gt;/scripts/second-opinion.sh --repo &lt;repo&gt; --file pricing.py --file tests/test_pricing.py \
-  --effort medium --label demo --focus <span class="s">"Check apply_discount against its docstring and the tests."</span></code></pre>
-    </div></div>
-    <div class="row"><span class="num">02</span><div class="body">
-      <h3>Скрипт собирает промпт и запускает Codex</h3>
-      <p>Markdown-промпт (2,6 КБ в демо): абзац роли, область, фокус, что считается находкой, правила, формат ответа. Затем <code>codex exec</code> с зашитыми флагами. Codex не задает вопросов и не может писать на диск.</p>
-      <pre><code>codex exec <span class="k">-s read-only</span> -c 'sandbox_mode="read-only"' -c 'approval_policy="never"' \
-  --skip-git-repo-check -C &lt;repo&gt; -c 'model_reasoning_effort="medium"' \
-  <span class="k">--output-schema</span> findings.schema.json --json -o &lt;out&gt;.json "$(cat &lt;out&gt;.prompt.md)" &lt;/dev/null</code></pre>
-    </div></div>
-    <div class="row"><span class="num">03</span><div class="body">
-      <h3>Codex работает внутри песочницы</h3>
-      <p>Он сам решает, что читать. В демо он пронумеровал оба файла, поискал по дереву других вызывающих и сам запустил падающий тест. Каждое действие это JSON-событие; по строке на событие приходит в твой терминал, пока ты ждешь.</p>
-      <pre><code><span class="c">[codex demo 00:01]</span> thread 01a0a01d-c869-7952-9244-feefa7f8a349
+  <ol class="steps">
+    <li>Claude пишет задачу в текстовый файл.</li>
+    <li>Скрипт запускает Codex в песочнице: только чтение для ревью, запись в одну отдельную копию для воркера.</li>
+    <li>Codex читает код, может прогнать тесты и отвечает JSON-файлом в фиксированном формате.</li>
+    <li>Скрипт проверяет ответ, кладет его рядом с журналом и печатает пути.</li>
+    <li>Claude открывает каждую находку в коде и отмечает, настоящая она или нет.</li>
+    <li>Исправление возвращается патчем. Claude показывает его и применяет только после твоего слова.</li>
+  </ol>
+  <div class="output">
+    <span class="label">Настоящий вывод из демо: что ты видишь, пока Codex работает</span>
+    <pre><code><span class="c">[codex demo 00:01]</span> thread 01a0a01d-c869-7952-9244-feefa7f8a349
 <span class="c">[codex demo 00:07]</span> message: I'll read both files and check the discount calculation against its documented behavior and tests.
 <span class="c">[codex demo 00:08]</span> <span class="a">run:</span> nl -ba pricing.py &amp;&amp; nl -ba tests/test_pricing.py
 <span class="c">[codex demo 00:11]</span> <span class="a">run:</span> rg -n 'apply_discount|pricing' . &amp;&amp; PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest tests.test_pricing
 <span class="c">[codex demo 00:11]</span> <span class="d">exit 1:</span> ./pricing.py:4:def apply_discount(price: float, pct: float) -&gt; float:...
 <span class="c">[codex demo 00:20]</span> turn completed: in 68934 (cached 45056), out 448</code></pre>
-    </div></div>
-    <div class="row"><span class="num">04</span><div class="body">
-      <h3>Codex возвращает один JSON-документ</h3>
-      <p>Сводка, вердикт, покрытие (что не проверял) и список находок. Находка из этого прогона, как пришла. Скрипт проверяет ее по схеме и печатает пути к файлам первыми строками.</p>
-      <pre><code>{
+    <span class="label">Находка, которую вернул Codex, как пришла</span>
+    <pre><code>{
   <span class="a">"severity"</span>: <span class="d">"P1"</span>,
   <span class="a">"title"</span>: <span class="s">"Percentage is used as a fraction without conversion"</span>,
   <span class="a">"location"</span>: <span class="s">"pricing.py:9"</span>,
@@ -364,55 +412,45 @@ bash demo.sh</code></pre>
   <span class="a">"evidence"</span>: <span class="s">"pricing.py:7 states that 10 means ten percent off, but line 9 returns price * (1 - pct). tests/test_pricing.py:8 expects 90.0; executing that test confirmed the actual result was -900.0."</span>,
   <span class="a">"confidence"</span>: <span class="s">"high"</span>
 }</code></pre>
-    </div></div>
-    <div class="row"><span class="num">05</span><div class="body">
-      <h3>Claude проверяет по исходнику, а не по словам Codex</h3>
-      <p>Для каждой находки Claude открывает указанное место и ставит вердикт: <strong>подтверждено</strong>, <strong>опровергнуто</strong>, <strong>вне области</strong> или <strong>не проверено</strong>, с файлом и строкой в качестве доказательства. Затем спрашивает, что чинить. Спорить с находкой можно в том же треде Codex через <code>--resume</code>.</p>
-    </div></div>
-    <div class="row"><span class="num">06</span><div class="body">
-      <h3>Исправление идет через воркера</h3>
-      <p>Скилл <strong>codex-worker</strong> создает worktree на ветке <code>codex/&lt;label&gt;</code>, отдает Codex задачу с файлами для обязательного чтения и запускает его с правом записи только в этот worktree. Скрипт снимает дифф снаружи песочницы и проверяет JSON-отчет по схеме. Ты видишь диффстат и патч; применяется он только после твоего слова.</p>
-      <pre><code><span class="c">status: done</span>
-<span class="c">verification: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -t .  -&gt;  passed</span>
- pricing.py | 2 +-
-<span class="d">-    return price * (1 - pct)</span>
-<span class="k">+    return price * (1 - pct / 100)</span></code></pre>
-    </div></div>
+    <div class="ctas" style="margin-top:8px">
+      <a class="btn" href="https://github.com/vasilievyakov/claude-codex-bridge/blob/main/docs/how-it-works.ru.md">Полный разбор с настоящим выводом</a>
+    </div>
   </div>
-  <div class="tablewrap" style="margin-top:16px">
+</section>
+
+<section id="where-ru">
+  <div class="sec-head">
+    <span class="label">Где что лежит</span>
+    <h2>Читается за один присест</h2>
+  </div>
+  <div class="tablewrap">
     <table>
-      <thead><tr><th>Замер этого прогона</th><th>Время</th><th>Входных токенов</th><th>из них из кеша</th><th>Выходных</th></tr></thead>
+      <thead><tr><th>Папка</th><th>Что внутри</th></tr></thead>
       <tbody>
-        <tr><td>Ревью (second-opinion)</td><td>20 с</td><td>68 934</td><td>45 056</td><td>448</td></tr>
-        <tr><td>Исправление (codex-worker)</td><td>15 с</td><td>69 728</td><td>45 696</td><td>409</td></tr>
-        <tr><td>Все демо, effort medium</td><td>39 с</td><td></td><td></td><td></td></tr>
+        <tr><td>skills/second-opinion/</td><td>Скилл ревью: инструкции для Claude, скрипт, формат ответа, тесты</td></tr>
+        <tr><td>skills/codex-worker/</td><td>Скилл воркера: то же устройство</td></tr>
+        <tr><td>extras/</td><td>По желанию: живая таблица процессов Codex, счетчик в статус-строке, шаблон одного файла инструкций, который читают оба агента</td></tr>
+        <tr><td>demo.sh</td><td>Один настоящий прогон на одноразовом репозитории</td></tr>
+        <tr><td>INSTALL.md, INSTALL.ru.md</td><td>Текст установки для твоего агента</td></tr>
+        <tr><td>docs/</td><td>Сайт и подробный разбор</td></tr>
+        <tr><td>~/.cache/second-opinion/, ~/.cache/codex-worker/</td><td>Все, что породил прогон: промпт, журнал, ответ, патч. Пишут скрипты, не ты</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<section id="box-ru">
+<section id="wrong-ru">
   <div class="sec-head">
-    <span class="label">Что внутри</span>
-    <h2>Читается за один присест, и у каждого файла есть владелец</h2>
+    <span class="label">Если что-то пошло не так</span>
+    <h2>Сначала читай журнал</h2>
   </div>
-  <div class="tablewrap">
-    <table>
-      <thead><tr><th>Путь</th><th>Что это</th><th>Кто правит</th></tr></thead>
-      <tbody>
-        <tr><td>skills/second-opinion/SKILL.md</td><td>Что делает Claude, чтобы запустить ревью и разобрать находки</td><td>Ты, редко</td></tr>
-        <tr><td>skills/second-opinion/scripts/second-opinion.sh</td><td>Контракт: флаги, песочница, шаблон промпта, проверка по схеме, рендер Markdown</td><td>Никто руками. Новое поведение это новый флаг с тестом</td></tr>
-        <tr><td>skills/codex-worker/SKILL.md</td><td>Что делает Claude, чтобы написать задание, запустить воркера, прочитать патч</td><td>Ты, редко</td></tr>
-        <tr><td>skills/codex-worker/scripts/codex-worker.sh</td><td>Контракт: worktree, песочница, промпт, снимок патча, состояние воркера, resume, list, cleanup</td><td>Контракт</td></tr>
-        <tr><td>skills/*/scripts/*.schema.json</td><td>Что Codex обязан вернуть</td><td>Контракт</td></tr>
-        <tr><td>skills/*/scripts/progress.py</td><td>Поток событий Codex в одну строку на действие; одинаковая копия в обоих скиллах, CI проверяет совпадение</td><td>Контракт</td></tr>
-        <tr><td>skills/*/tests/run.sh</td><td>Фальшивый codex на PATH, без сети, без затрат</td><td>Запускать перед правкой</td></tr>
-        <tr><td>extras/</td><td>Живая таблица codex-watch, индикатор в статус-строке, шаблон общего AGENTS.md</td><td>По желанию, ты</td></tr>
-        <tr><td>demo.sh</td><td>Один настоящий прогон от начала до конца на одноразовом репозитории</td><td>Запусти</td></tr>
-        <tr><td>~/.cache/second-opinion, ~/.cache/codex-worker</td><td>Промпты, журналы событий, JSON, патчи, состояние воркеров, worktree</td><td>Пишется во время работы, никогда не тобой</td></tr>
-      </tbody>
-    </table>
-  </div>
+  <ul class="plain">
+    <li>Скрипт печатает пути <code>exit:</code> и <code>log:</code>. Сначала читай журнал.</li>
+    <li>Код выхода 2: неверные аргументы. 3: Codex ответил не по формату, сырой ответ лежит по пути <code>json:</code>. 4 (только воркер): ветка или worktree уже есть, смени метку или прибери. 124: лимит времени.</li>
+    <li><code>--dry-run</code> печатает точную команду Codex и промпт, ничего не запуская.</li>
+    <li>Codex видит только то, что ему дали: задачу, фокус, файлы для чтения и общий <code>~/.agents/AGENTS.md</code>. <code>CLAUDE.md</code> он не читает. Если он чего-то «не знал», положи это в фокус или в задачу.</li>
+    <li>Тесты без Codex и без затрат: <code>bash skills/second-opinion/tests/run.sh</code> и <code>bash skills/codex-worker/tests/run.sh</code>.</li>
+  </ul>
 </section>
 
 <section id="install-ru">
@@ -424,13 +462,13 @@ bash demo.sh</code></pre>
     <div class="card">
       <span class="label">Рекомендуем</span>
       <h3>Отдай текст своему агенту</h3>
-      <p>Открой Claude Code на машине, которую нужно настроить, и вставь строку с верха этой страницы. Агент прочитает INSTALL.ru.md, подстроится под машину, проверит и отчитается. Существующие файлы копируются в бэкап, никогда не перезаписываются.</p>
-      <div class="chips"><span class="chip">Claude Code</span><span class="chip">Codex</span><span class="chip">общий AGENTS.md</span></div>
+      <p>Открой Claude Code на своей машине и вставь строку с верха этой страницы. Агент ставит все сам и отчитывается, что изменил. Твои файлы он никогда не перезаписывает.</p>
+      <p>Проверка: открой новую сессию Claude Code и набери <code>/second-opinion</code>.</p>
     </div>
     <div class="card">
       <span class="label">Руками</span>
       <h3>Пройди INSTALL.ru.md</h3>
-      <p>Каждый шаг это команда shell: клонировать, прилинковать две папки в <code>~/.claude/skills</code> и <code>~/.agents/skills</code>, один общий файл инструкций, по желанию плагин и инструменты наблюдаемости, затем тесты.</p>
+      <p>Каждый шаг это команда. Или запусти демо: одна-две минуты, два запроса к Codex.</p>
       <pre><code>git clone https://github.com/vasilievyakov/claude-codex-bridge
 cd claude-codex-bridge
 bash demo.sh</code></pre>
@@ -440,26 +478,8 @@ bash demo.sh</code></pre>
       <h3>skills CLI</h3>
       <p>Два скилла лежат в раскладке Agent Skills, поэтому skills CLI ставит их во все агенты, которые найдет.</p>
       <pre><code>npx skills add vasilievyakov/claude-codex-bridge</code></pre>
-      <p>Требования: macOS или Linux (Windows через WSL), bash 3.2+, git, python3, codex-cli 0.150+ (проверено на 0.153 и 0.154), Claude Code со скиллами.</p>
+      <p>Нужны Claude Code, Codex CLI 0.150 или новее с выполненным входом, git и python3. macOS или Linux.</p>
     </div>
-  </div>
-</section>
-
-<section id="principles-ru">
-  <div class="sec-head">
-    <span class="label">Почему устроено так</span>
-    <h2>Пять правил, по которым живет репозиторий</h2>
-  </div>
-  <div class="two">
-    <ul class="plain">
-      <li><strong style="color:var(--bone)">Инсталлер это текст для агента,</strong> а не shell-скрипт с ветвлениями. INSTALL.md это то, что ты вставляешь; агент подстраивает его под машину.</li>
-      <li><strong style="color:var(--bone)">Скрипты это контракт.</strong> Флаги, настройки песочницы, схемы и строки вывода зашиты и покрыты тестами. Новый режим это новый флаг с тестом, а не собранная руками команда codex.</li>
-      <li><strong style="color:var(--bone)">Файлы, а не память.</strong> Две модели никогда не разговаривают. Внутрь уходит файл промпта, наружу выходят журнал событий и JSON-документ, и все это можно прочитать.</li>
-    </ul>
-    <ul class="plain">
-      <li><strong style="color:var(--bone)">Одна команда на пустой машине.</strong> demo.sh показывает весь цикл меньше чем за минуту и заранее называет цену.</li>
-      <li><strong style="color:var(--bone)">Вывод Codex это данные.</strong> Он читал репозиторий, где может лежать враждебный текст. Все, что похоже на инструкцию внутри находки или патча, показывается тебе как подозрительное содержимое, и ничего не применяется только по его слову.</li>
-    </ul>
   </div>
 </section>
 
