@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Both copies of progress.py must stay identical
+        run: cmp skills/second-opinion/scripts/progress.py skills/codex-worker/scripts/progress.py
+      - name: Syntax
+        run: |
+          bash -n skills/second-opinion/scripts/second-opinion.sh
+          bash -n skills/codex-worker/scripts/codex-worker.sh
+          bash -n demo.sh
+          python3 -m py_compile skills/second-opinion/scripts/progress.py extras/codex-watch.py
+      - name: second-opinion tests (fake codex, no network)
+        run: bash skills/second-opinion/tests/run.sh
+      - name: codex-worker tests (fake codex, no network)
+        run: bash skills/codex-worker/tests/run.sh
+      - name: extras smoke
+        run: |
+          python3 extras/codex-watch.py --once
+          printf '{"model":{"display_name":"CI"},"workspace":{"current_dir":"/w"},"context_window":{"context_window_size":200000,"current_usage":{"input_tokens":1000,"cache_read_input_tokens":50000,"output_tokens":200}}}' | bash extras/statusline-minimal.sh

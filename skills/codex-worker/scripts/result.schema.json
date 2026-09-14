@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CodexWorkerResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "changes", "verification", "assumptions", "blocked_on", "notes_for_reviewer"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["done", "partial", "blocked"],
+      "description": "done: the whole task is complete and verified as far as possible. partial: some of it is done, the rest is described in notes_for_reviewer. blocked: could not proceed; the reason is in blocked_on."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Two to five sentences: what was done and how it was verified."
+    },
+    "changes": {
+      "type": "array",
+      "description": "Every file touched, one entry per file.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "change", "note"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the worktree root."
+          },
+          "change": {
+            "type": "string",
+            "enum": ["added", "modified", "deleted", "renamed"]
+          },
+          "note": {
+            "type": "string",
+            "description": "One line: what changed in this file and why."
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "description": "Commands run to verify the work (tests, linters, builds) and their outcome.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "result", "note"],
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": ["passed", "failed", "not_run"]
+          },
+          "note": {
+            "type": "string",
+            "description": "Key output, failure reason, or why it was not run."
+          }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "description": "Decisions made where the task was ambiguous.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blocked_on": {
+      "type": "string",
+      "description": "What prevented completion (missing dependency, network, unclear requirement). Empty string when nothing blocked."
+    },
+    "notes_for_reviewer": {
+      "type": "string",
+      "description": "What the reviewer should look at first, known gaps, follow-ups. Empty string when none."
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SecondOpinionFindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "verdict", "coverage", "findings"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "Two to five sentences: what was reviewed and the overall judgement."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "needs_changes", "could_not_verify"]
+    },
+    "coverage": {
+      "type": "string",
+      "description": "What was inspected (files, commands run) and what was not or could not be verified."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "title", "location", "claim", "failure_scenario", "evidence", "confidence"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["P1", "P2", "P3"],
+            "description": "P1: data loss, security, wrong results. P2: bug likely in normal use. P3: quality, maintainability."
+          },
+          "title": {
+            "type": "string",
+            "description": "One line, specific."
+          },
+          "location": {
+            "type": "string",
+            "description": "file:line or function; for a plan, the step or section."
+          },
+          "claim": {
+            "type": "string",
+            "description": "What is wrong."
+          },
+          "failure_scenario": {
+            "type": "string",
+            "description": "Concrete inputs or state that lead to the wrong outcome."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "What was actually read that supports the claim."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          }
+        }
+      }
+    }
+  }
+}
