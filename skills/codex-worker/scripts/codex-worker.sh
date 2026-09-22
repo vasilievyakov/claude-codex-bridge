@@ -25,14 +25,17 @@ Task (exactly one; required for a run and for --resume):
 
 Options:
   --label <name>         worker id, also the branch name codex/<name> (default: w-<HHMMSS>)
-  --repo <dir>           repository root (default: git toplevel of cwd)
+  --repo <dir>           repository (default: git toplevel of cwd); a subdirectory is
+                         widened to its git toplevel unless --in-place
   --base <ref>           the worker branch starts here (default: HEAD)
   --in-place             no worktree: Codex edits --repo directly; one worker only
   --context <path>       file or directory Codex must read first; repeatable
-  --model <m>            Codex model, passed as -m; "spark" means gpt-5.3-codex-spark
-  --effort <level>       low | medium | high | xhigh (default: high)
-  --network              allow network inside the sandbox (sandbox_workspace_write.network_access=true)
-  --search               allow web search (tools.web_search=true)
+  --model <m>            Codex model, passed as -m (default: whatever Codex config says)
+  --effort <level>       reasoning effort passed to Codex as is: usually low, medium,
+                         high or xhigh; newer models may accept more (default: high)
+  --network              allow network inside the sandbox (sandbox_workspace_write.network_access=true;
+                         without it network_access=false is passed explicitly)
+  --search               allow live web search (web_search="live")
   --timeout <sec>        kill codex after <sec> seconds (default: 1800; 0 disables)
   --out-dir <dir>        outputs, worker state and worktrees (default: ${XDG_CACHE_HOME:-~/.cache}/codex-worker)
   --worktree-dir <dir>   worktree path (default: <out-dir>/worktrees/<repo>-<hash>/<label>)
@@ -47,7 +50,8 @@ Stdout on completion: json:, markdown:, patch:, worktree:, branch:, base:, event
 prompt:, thread_id:, exit: lines, a blank line, then the JSON report. The patch is a
 snapshot of the worktree against base and is never applied automatically.
 Exit code: 0 ok, 2 bad arguments, 3 report failed the schema check, 4 git or worktree
-failure, otherwise the codex exit code (124 on timeout).
+failure, 130/143 interrupted (SIGINT/SIGTERM; state status "interrupted"), otherwise
+the codex exit code (124 on timeout).
 EOF
 }
 
@@ -119,15 +123,13 @@ while [ $# -gt 0 ]; do
 done
 if [ $# -gt 0 ]; then die "unexpected argument: $1 (see --help)"; fi
 
+# Effort is passed through to Codex; only the shape is checked here, so a
+# newer model's extra levels keep working without a script update.
 case "$EFFORT" in
-  low|medium|high|xhigh) ;;
-  *) die "--effort must be one of low, medium, high, xhigh (got '$EFFORT')" ;;
+  ''|*[!a-z]*) die "--effort must be a lowercase word such as low, medium, high or xhigh (got '$EFFORT')" ;;
 esac
 case "$TIMEOUT" in
   ''|*[!0-9]*) die "--timeout must be a non-negative integer (seconds), got '$TIMEOUT'" ;;
-esac
-case "$MODEL" in
-  spark) MODEL="gpt-5.3-codex-spark" ;;
 esac
 
 if [ "$TASK_SET" = 1 ] && [ -n "$TASK_FILE" ]; then
@@ -177,7 +179,7 @@ if [ "$MODE" = "run" ] && [ "$IN_PLACE" = 0 ]; then
 fi
 
 hash8() { python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest()[:8])' "$1"; }
-REPO_KEY="$(basename "$REPO")-$(hash8 "$REPO")"
+repo_key() { printf '%s-%s\n' "$(basename "$1")" "$(hash8 "$1")"; }
 
 sanitize() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-60; }
 if [ -z "$LABEL" ]; then LABEL="w-$(date +%H%M%S)"; fi
@@ -187,6 +189,30 @@ BRANCH="codex/$LABEL"
 
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
+
+# A worktree always holds the whole repository, so outside --in-place a --repo
+# that points into a subdirectory is widened to the git toplevel: --context
+# paths, the base checks and the state key are then relative to the root.
+# For --resume/--cleanup a worker recorded under the subdirectory itself (an
+# in-place worker, or one created by an older version) is still found.
+if [ "$IN_PLACE" = 0 ] && repo_is_git; then
+  TOP="$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$TOP" ] && [ -d "$TOP" ]; then TOP="$(cd "$TOP" && pwd -P)"; fi
+  if [ -n "$TOP" ] && [ "$TOP" != "$REPO" ]; then
+    keep_sub=0
+    if [ "$MODE" = "resume" ] || [ "$MODE" = "cleanup" ]; then
+      if [ -f "$OUT_DIR/workers/$(repo_key "$REPO")/$LABEL.json" ] \
+        && [ ! -f "$OUT_DIR/workers/$(repo_key "$TOP")/$LABEL.json" ]; then
+        keep_sub=1
+      fi
+    fi
+    if [ "$keep_sub" = 0 ]; then
+      if [ "$MODE" = "run" ]; then note "--repo $REPO is inside a git repository; using its root $TOP"; fi
+      REPO="$TOP"
+    fi
+  fi
+fi
+REPO_KEY="$(repo_key "$REPO")"
 STATE_DIR="$OUT_DIR/workers/$REPO_KEY"
 STATE_FILE="$STATE_DIR/$LABEL.json"
 if [ -z "$WORKTREE" ]; then
@@ -417,9 +443,12 @@ done
 # ---------------------------------------------------------------------------
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BASE_NAME="$OUT_DIR/$STAMP-$LABEL"
+# Reserve the output name atomically: the prompt file is created with noclobber
+# (O_EXCL), so two runs with the same label in the same second cannot share it.
 n=1
-while [ -e "$BASE_NAME.prompt.md" ]; do
+while ! ( set -C; : > "$BASE_NAME.prompt.md" ) 2>/dev/null; do
   n=$((n + 1))
+  if [ "$n" -gt 1000 ]; then die "cannot create an output file in $OUT_DIR (not writable?)"; fi
   BASE_NAME="$OUT_DIR/$STAMP-$LABEL-$n"
 done
 PROMPT_FILE="$BASE_NAME.prompt.md"
@@ -513,7 +542,6 @@ EOF
 }
 
 if [ "$MODE" = "resume" ]; then write_resume_prompt; else write_prompt; fi
-PROMPT_TEXT="$(cat "$PROMPT_FILE")"
 
 # ---------------------------------------------------------------------------
 # Command
@@ -538,7 +566,7 @@ if [ -n "$TIMEOUT_BIN" ]; then
 fi
 CMD+=(codex exec)
 if [ "$MODE" = "resume" ]; then
-  # `codex exec resume` (0.153) accepts -c, -m, --json, -o, --output-schema and
+  # `codex exec resume` (0.156) accepts -c, -m, --json, -o, --output-schema and
   # --skip-git-repo-check but not -s or -C: run it with cwd set to the worktree
   # and re-assert the sandbox via -c, because a resumed thread does not inherit
   # the sandbox it was created with.
@@ -551,10 +579,18 @@ else
 fi
 if [ -n "$MODEL" ]; then CMD+=(-m "$MODEL"); fi
 CMD+=(-c "model_reasoning_effort=\"$EFFORT\"")
-if [ "$NETWORK" = 1 ]; then CMD+=(-c 'sandbox_workspace_write.network_access=true'); fi
-if [ "$SEARCH" = 1 ]; then CMD+=(-c 'tools.web_search=true'); fi
+# Network is set explicitly both ways, so a user ~/.codex/config.toml that turns
+# it on cannot widen the sandbox of a run that did not ask for --network.
+if [ "$NETWORK" = 1 ]; then
+  CMD+=(-c 'sandbox_workspace_write.network_access=true')
+else
+  CMD+=(-c 'sandbox_workspace_write.network_access=false')
+fi
+if [ "$SEARCH" = 1 ]; then CMD+=(-c 'web_search="live"'); fi
 CMD+=(--output-schema "$SCHEMA_FILE" --json -o "$OUT_JSON")
-CMD+=("$PROMPT_TEXT")
+# The prompt goes through stdin (`-`), not argv: no ARG_MAX / MAX_ARG_STRLEN
+# limit (128 KiB per argument on Linux) and it does not show up in `ps`.
+CMD+=(-)
 
 shell_quote() {
   case "$1" in
@@ -567,8 +603,8 @@ shell_quote() {
 
 warn_codex_version() {
   # Warn, never fail, when the installed codex looks older than the version
-  # this script is tested with (codex-cli 0.153; anything below 0.150.0 warns).
-  # `codex --version` prints e.g. "codex-cli 0.153.4". Pure bash 3.2 compare.
+  # this script is tested with (codex-cli 0.156; anything below 0.150.0 warns).
+  # `codex --version` prints e.g. "codex-cli 0.156.0". Pure bash 3.2 compare.
   local raw ver major minor shown
   raw="$(codex --version 2>&1)" || true
   raw="${raw%%$'\n'*}"
@@ -582,7 +618,7 @@ warn_codex_version() {
   else
     shown="of unknown version (codex --version said: ${raw:-nothing})"
   fi
-  note "warning: codex $shown detected; this script is tested with codex-cli 0.153 and later; continuing"
+  note "warning: codex $shown detected; this script is tested with codex-cli 0.156 (0.150 and later should work); continuing"
 }
 
 # The version check is cheap and runs even in --dry-run whenever codex is on
@@ -605,16 +641,12 @@ if [ "$DRY_RUN" = 1 ]; then
   printf 'state: %s\n' "$STATE_FILE"
   printf 'prompt: %s\n' "$PROMPT_FILE"
   if [ "$MODE" = "resume" ]; then printf 'cwd: %s (cd before running; resume takes no -C)\n' "$CWD_FOR_CODEX"; fi
+  printf 'stdin: %s (the prompt; the trailing - reads it)\n' "$PROMPT_FILE"
   printf 'command (one argument per line):\n'
-  last=$(( ${#CMD[@]} - 1 ))
   i=0
-  while [ $i -le $last ]; do
-    if [ $i -eq $last ]; then
-      printf '"$(cat %s)"\n' "$(shell_quote "$PROMPT_FILE")"
-    else
-      shell_quote "${CMD[$i]}"
-      printf '\n'
-    fi
+  while [ $i -lt ${#CMD[@]} ]; do
+    shell_quote "${CMD[$i]}"
+    printf '\n'
     i=$((i + 1))
   done
   exit 0
@@ -653,66 +685,6 @@ elif [ "$IN_PLACE" = 1 ]; then
   note "running worker $LABEL in-place in $REPO (effort=$EFFORT, timeout=${TIMEOUT}s); outputs: $BASE_NAME.*"
 else
   note "running worker $LABEL in $WORKTREE on $BRANCH (effort=$EFFORT, timeout=${TIMEOUT}s); outputs: $BASE_NAME.*"
-fi
-
-# ---------------------------------------------------------------------------
-# Run
-# ---------------------------------------------------------------------------
-# Codex runs in the background; progress.py follows the events file and prints
-# one line per Codex action to stderr (visible live in a terminal or in the
-# Background panel of Claude Code). --quiet disables the follower.
-PROGRESS_PY="$SCRIPT_DIR/progress.py"
-START_EPOCH="$(date +%s)"
-set +e
-( cd "$CWD_FOR_CODEX" && exec "${CMD[@]}" ) </dev/null >"$OUT_EVENTS" 2>>"$OUT_LOG" &
-CODEX_PID=$!
-FOLLOW_PID=""
-if [ "$QUIET" = 0 ] && [ -f "$PROGRESS_PY" ]; then
-  python3 "$PROGRESS_PY" --file "$OUT_EVENTS" --label "$LABEL" --start "$START_EPOCH" --pid "$CODEX_PID" &
-  FOLLOW_PID=$!
-fi
-wait "$CODEX_PID"
-CODEX_EXIT=$?
-if [ -n "$FOLLOW_PID" ]; then wait "$FOLLOW_PID" 2>/dev/null; fi
-set -e
-
-# ---------------------------------------------------------------------------
-# Snapshot: working tree against base, taken from outside the sandbox.
-# A temporary index (a copy of the real one) is used so the user's own index
-# is never touched; untracked files are included, ignored files are not.
-# ---------------------------------------------------------------------------
-DIFFSTAT=""
-snapshot_patch() {
-  # snapshot_patch <dir> <base_sha> <patch_file>
-  local dir="$1" base="$2" patch="$3" idx real
-  : > "$patch"
-  DIFFSTAT=""
-  idx="$STATE_DIR/.$LABEL.index.tmp"
-  rm -f "$idx"
-  real="$(git -C "$dir" rev-parse --git-path index 2>/dev/null || true)"
-  case "$real" in
-    '') ;;
-    /*) ;;
-    *) real="$dir/$real" ;;
-  esac
-  if [ -n "$real" ] && [ -f "$real" ]; then cp "$real" "$idx"; fi
-  if GIT_INDEX_FILE="$idx" git -C "$dir" add -A 2>>"$OUT_LOG"; then
-    if ! GIT_INDEX_FILE="$idx" git -C "$dir" diff --cached --binary "$base" >"$patch" 2>>"$OUT_LOG"; then
-      note "warning: git diff failed while snapshotting the patch; see $OUT_LOG"
-    fi
-    DIFFSTAT="$(GIT_INDEX_FILE="$idx" git -C "$dir" diff --cached --stat "$base" 2>>"$OUT_LOG" || true)"
-  else
-    note "warning: git add failed while snapshotting; the patch may be incomplete; see $OUT_LOG"
-  fi
-  rm -f "$idx"
-}
-
-HAS_PATCH=0
-if [ "$IN_PLACE" = 1 ] && [ "$IS_GIT" = 0 ]; then
-  note "$REPO is not a git repository: no patch can be produced in-place"
-else
-  snapshot_patch "$CWD_FOR_CODEX" "$BASE_SHA" "$OUT_PATCH"
-  HAS_PATCH=1
 fi
 
 extract_thread_id() {
@@ -754,6 +726,88 @@ print(tid)
 PY
 }
 
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+# Codex runs in the background; progress.py follows the events file and prints
+# one line per Codex action to stderr (visible live in a terminal or in the
+# Background panel of Claude Code). --quiet disables the follower.
+PROGRESS_PY="$SCRIPT_DIR/progress.py"
+START_EPOCH="$(date +%s)"
+CODEX_PID=""
+FOLLOW_PID=""
+on_signal() {
+  # on_signal <exit code>: Ctrl-C or kill of this script. Background jobs of a
+  # non-interactive shell ignore SIGINT and GNU timeout puts codex into its own
+  # process group, so nothing else would stop them: send TERM (timeout passes
+  # it on to codex), reap, record the interruption and exit. The worktree and
+  # the branch stay as they are; --cleanup removes them.
+  trap - INT TERM HUP
+  if [ -n "$CODEX_PID" ]; then kill -TERM "$CODEX_PID" 2>/dev/null; fi
+  if [ -n "$FOLLOW_PID" ]; then kill -TERM "$FOLLOW_PID" 2>/dev/null; fi
+  if [ -n "$CODEX_PID" ]; then wait "$CODEX_PID" 2>/dev/null; fi
+  if [ -n "$FOLLOW_PID" ]; then wait "$FOLLOW_PID" 2>/dev/null; fi
+  local tid="$THREAD_ID"
+  if [ "$MODE" = "run" ]; then tid="$(extract_thread_id "$OUT_EVENTS" 2>/dev/null || true)"; fi
+  state_set "thread_id=$tid" "last_run=$(now_iso)" "status=interrupted" 2>/dev/null || true
+  note "interrupted; codex was stopped; worker $LABEL marked interrupted (worktree kept: $CWD_FOR_CODEX)"
+  exit "$1"
+}
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
+set +e
+( cd "$CWD_FOR_CODEX" && exec "${CMD[@]}" ) <"$PROMPT_FILE" >"$OUT_EVENTS" 2>>"$OUT_LOG" &
+CODEX_PID=$!
+if [ "$QUIET" = 0 ] && [ -f "$PROGRESS_PY" ]; then
+  python3 "$PROGRESS_PY" --file "$OUT_EVENTS" --label "$LABEL" --start "$START_EPOCH" --pid "$CODEX_PID" &
+  FOLLOW_PID=$!
+fi
+wait "$CODEX_PID"
+CODEX_EXIT=$?
+if [ -n "$FOLLOW_PID" ]; then wait "$FOLLOW_PID" 2>/dev/null; fi
+trap - INT TERM HUP
+set -e
+
+# ---------------------------------------------------------------------------
+# Snapshot: working tree against base, taken from outside the sandbox.
+# A temporary index (a copy of the real one) is used so the user's own index
+# is never touched; untracked files are included, ignored files are not.
+# ---------------------------------------------------------------------------
+DIFFSTAT=""
+snapshot_patch() {
+  # snapshot_patch <dir> <base_sha> <patch_file>
+  local dir="$1" base="$2" patch="$3" idx real
+  : > "$patch"
+  DIFFSTAT=""
+  idx="$STATE_DIR/.$LABEL.index.tmp"
+  rm -f "$idx"
+  real="$(git -C "$dir" rev-parse --git-path index 2>/dev/null || true)"
+  case "$real" in
+    '') ;;
+    /*) ;;
+    *) real="$dir/$real" ;;
+  esac
+  if [ -n "$real" ] && [ -f "$real" ]; then cp "$real" "$idx"; fi
+  if GIT_INDEX_FILE="$idx" git -C "$dir" add -A 2>>"$OUT_LOG"; then
+    if ! GIT_INDEX_FILE="$idx" git -C "$dir" diff --cached --binary "$base" >"$patch" 2>>"$OUT_LOG"; then
+      note "warning: git diff failed while snapshotting the patch; see $OUT_LOG"
+    fi
+    DIFFSTAT="$(GIT_INDEX_FILE="$idx" git -C "$dir" diff --cached --stat "$base" 2>>"$OUT_LOG" || true)"
+  else
+    note "warning: git add failed while snapshotting; the patch may be incomplete; see $OUT_LOG"
+  fi
+  rm -f "$idx"
+}
+
+HAS_PATCH=0
+if [ "$IN_PLACE" = 1 ] && [ "$IS_GIT" = 0 ]; then
+  note "$REPO is not a git repository: no patch can be produced in-place"
+else
+  snapshot_patch "$CWD_FOR_CODEX" "$BASE_SHA" "$OUT_PATCH"
+  HAS_PATCH=1
+fi
+
 if [ "$MODE" = "run" ]; then
   THREAD_ID="$(extract_thread_id "$OUT_EVENTS")"
   if [ -z "$THREAD_ID" ]; then note "warning: no thread_id found in $OUT_EVENTS; --resume will not work for this worker"; fi
@@ -762,7 +816,7 @@ fi
 render_markdown() {
   # render_markdown <json> <markdown> key=value... ; prints the status; exit 3 if the JSON fails the schema
   CW_DIFFSTAT="$DIFFSTAT" python3 - "$@" <<'PY'
-import json, os, re, sys
+import json, os, re, shlex, sys
 src, dst = sys.argv[1], sys.argv[2]
 meta = {}
 for kv in sys.argv[3:]:
@@ -884,10 +938,11 @@ if in_place:
     out.append("")
 else:
     out.append("Nothing is applied automatically. Review the patch, then in the main repository:\n")
-    out.append("    git -C %s apply --check %s" % (meta.get("repo", ""), meta.get("patch", "")))
-    out.append("    git -C %s apply --3way %s\n" % (meta.get("repo", ""), meta.get("patch", "")))
+    q_repo, q_patch = shlex.quote(meta.get("repo", "")), shlex.quote(meta.get("patch", ""))
+    out.append("    git -C %s apply --check %s" % (q_repo, q_patch))
+    out.append("    git -C %s apply --3way %s\n" % (q_repo, q_patch))
     out.append("Alternative: commit inside the worktree and merge branch %s." % meta.get("branch", ""))
-    out.append("Afterwards: codex-worker.sh --cleanup --label %s\n" % meta.get("label", ""))
+    out.append("Afterwards: codex-worker.sh --cleanup --label %s\n" % shlex.quote(meta.get("label", "")))
 with open(dst, "w", encoding="utf-8") as f:
     f.write("\n".join(out))
 print(data["status"])

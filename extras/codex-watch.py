@@ -22,6 +22,11 @@ Sections:
                    own. EVENTS is the line count of <output>.events.jsonl,
                    LAST the last describable event read from the tail of that
                    file (at most 64 KB). The prompt argument is never printed.
+                   `ps` joins argv with spaces, so -o/-C values are re-read
+                   from the real argv where possible (/proc/<pid>/cmdline on
+                   Linux, sysctl KERN_PROCARGS2 on macOS); paths with spaces
+                   then parse correctly. Otherwise the ps line is split on
+                   whitespace (best effort).
   WORKERS (state)  <cache>/codex-worker/workers/<repo-key>/<label>.json;
                    the section is skipped when there are no state files.
   RECENT RESULTS   8 newest result files among <cache>/second-opinion/**/*.json
@@ -46,6 +51,8 @@ Python 3 standard library only. Ctrl-C exits cleanly.
 """
 
 import argparse
+import ctypes
+import ctypes.util
 import glob
 import json
 import os
@@ -225,6 +232,63 @@ def _option_value(args, names):
     return ""
 
 
+def _darwin_argv(pid):
+    """argv of a process on macOS via sysctl(KERN_PROCARGS2); None on failure."""
+    try:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+        ctl_kern, kern_argmax, kern_procargs2 = 1, 8, 49
+        argmax = ctypes.c_int(0)
+        size = ctypes.c_size_t(ctypes.sizeof(argmax))
+        mib = (ctypes.c_int * 2)(ctl_kern, kern_argmax)
+        if libc.sysctl(mib, 2, ctypes.byref(argmax), ctypes.byref(size), None, 0) != 0:
+            return None
+        buf = ctypes.create_string_buffer(argmax.value)
+        size = ctypes.c_size_t(argmax.value)
+        mib = (ctypes.c_int * 3)(ctl_kern, kern_procargs2, pid)
+        if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, 0) != 0:
+            return None
+        data = buf.raw[: size.value]
+        # Layout: int argc, exec path, NUL padding, argv[0..argc-1] NUL-separated.
+        argc = int.from_bytes(data[:4], sys.byteorder)
+        rest = data[4:]
+        end = rest.find(b"\0")
+        if argc <= 0 or end < 0:
+            return None
+        parts = rest[end:].lstrip(b"\0").split(b"\0")
+        if len(parts) < argc:
+            return None
+        return [p.decode("utf-8", "replace") for p in parts[:argc]]
+    except Exception:
+        return None
+
+
+def real_argv(pid):
+    """argv of a live process with argument boundaries intact, or None.
+
+    Linux: /proc/<pid>/cmdline. macOS: sysctl KERN_PROCARGS2. Not used with
+    CODEX_WATCH_FAKE_PS (the fake pids are not real processes)."""
+    if os.environ.get("CODEX_WATCH_FAKE_PS"):
+        return None
+    try:
+        pid = int(pid)
+    except ValueError:
+        return None
+    proc = "/proc/%d/cmdline" % pid
+    if os.path.exists(proc):
+        try:
+            with open(proc, "rb") as f:
+                raw = f.read()
+        except OSError:
+            return None
+        parts = raw.split(b"\0")
+        if parts and parts[-1] == b"":
+            parts.pop()
+        return [p.decode("utf-8", "replace") for p in parts] or None
+    if sys.platform == "darwin":
+        return _darwin_argv(pid)
+    return None
+
+
 def parse_process(line):
     m = PS_LINE_RE.match(line)
     if not m:
@@ -233,7 +297,11 @@ def parse_process(line):
     vm = CODEX_RE.match(cmd)
     if not vm:
         return None
-    args = cmd.split()[1:]
+    argv = real_argv(pid)
+    if argv and os.path.basename(argv[0]) == "codex":
+        args = argv[1:]
+    else:
+        args = cmd.split()[1:]
     proc = {
         "pid": pid, "etime": etime, "sub": vm.group(1),
         "kind": "exec", "label": "-", "mode": "-", "cwd": "",

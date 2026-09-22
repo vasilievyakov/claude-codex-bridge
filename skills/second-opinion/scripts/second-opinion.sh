@@ -25,8 +25,9 @@ Options:
   --focus "<text>"       extra focus for the reviewer (the whole prompt in --resume mode)
   --label <name>         label used in output filenames (default: derived from scope)
   --model <m>            Codex model (default: whatever Codex config says)
-  --effort <level>       low | medium | high | xhigh (default: high)
-  --search               allow web search (tools.web_search=true)
+  --effort <level>       reasoning effort passed to Codex as is: usually low, medium,
+                         high or xhigh; newer models may accept more (default: high)
+  --search               allow live web search (web_search="live")
   --no-schema            prose output instead of schema-constrained JSON
   --out-dir <dir>        where to write outputs (default: ${XDG_CACHE_HOME:-~/.cache}/second-opinion)
   --timeout <sec>        kill codex after <sec> seconds (default: 900; 0 disables)
@@ -37,7 +38,9 @@ Options:
 
 Stdout on completion: json:, markdown:, events:, log:, prompt:, thread_id:, exit: lines,
 a blank line, then the review body. Exit code: 0 ok, 2 bad arguments, 3 output failed
-the schema check, otherwise the codex exit code.
+the schema check, 5 nothing to review (--uncommitted on a clean tree, or no changes
+in <branch>...HEAD; codex is not run), 130/143 interrupted (SIGINT/SIGTERM),
+otherwise the codex exit code (124 on timeout).
 EOF
 }
 
@@ -104,9 +107,10 @@ while [ $# -gt 0 ]; do
 done
 if [ $# -gt 0 ]; then die "unexpected argument: $1 (see --help)"; fi
 
+# Effort is passed through to Codex; only the shape is checked here, so a
+# newer model's extra levels keep working without a script update.
 case "$EFFORT" in
-  low|medium|high|xhigh) ;;
-  *) die "--effort must be one of low, medium, high, xhigh (got '$EFFORT')" ;;
+  ''|*[!a-z]*) die "--effort must be a lowercase word such as low, medium, high or xhigh (got '$EFFORT')" ;;
 esac
 case "$TIMEOUT" in
   ''|*[!0-9]*) die "--timeout must be a non-negative integer (seconds), got '$TIMEOUT'" ;;
@@ -174,6 +178,22 @@ if [ -z "$RESUME" ]; then
       [ -f "$PLAN" ] || die "--plan: no such file: $PLAN"
       ;;
   esac
+  # Nothing to review: exit before spending Codex quota. Untracked files count
+  # as changes for --uncommitted (ignored files do not).
+  case "$SCOPE" in
+    uncommitted)
+      if [ -z "$(git -C "$REPO" status --porcelain --untracked-files=normal 2>/dev/null)" ]; then
+        note "nothing to review: the working tree of $REPO is clean (no staged, unstaged or untracked changes); codex was not run"
+        exit 5
+      fi
+      ;;
+    base)
+      if git -C "$REPO" diff --quiet "$BASE...HEAD" -- 2>/dev/null; then
+        note "nothing to review: no changes in $BASE...HEAD; codex was not run"
+        exit 5
+      fi
+      ;;
+  esac
 fi
 
 # ---------------------------------------------------------------------------
@@ -201,9 +221,12 @@ mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd -P)"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BASE_NAME="$OUT_DIR/$STAMP-$LABEL"
+# Reserve the output name atomically: the prompt file is created with noclobber
+# (O_EXCL), so two runs with the same label in the same second cannot share it.
 n=1
-while [ -e "$BASE_NAME.prompt.md" ]; do
+while ! ( set -C; : > "$BASE_NAME.prompt.md" ) 2>/dev/null; do
   n=$((n + 1))
+  if [ "$n" -gt 1000 ]; then die "cannot create an output file in $OUT_DIR (not writable?)"; fi
   BASE_NAME="$OUT_DIR/$STAMP-$LABEL-$n"
 done
 PROMPT_FILE="$BASE_NAME.prompt.md"
@@ -345,7 +368,6 @@ if [ -n "$RESUME" ]; then
 else
   write_prompt
 fi
-PROMPT_TEXT="$(cat "$PROMPT_FILE")"
 
 # ---------------------------------------------------------------------------
 # Command
@@ -370,7 +392,7 @@ if [ -n "$TIMEOUT_BIN" ]; then
 fi
 CMD+=(codex exec)
 if [ -n "$RESUME" ]; then
-  # `codex exec resume` (0.153) accepts -m, --json, -o, --skip-git-repo-check but
+  # `codex exec resume` (0.156) accepts -m, --json, -o, --skip-git-repo-check but
   # not -s or -C: run it from inside the repo and re-assert the sandbox via -c,
   # because a resumed thread does not inherit the sandbox it was created with.
   CMD+=(resume "$RESUME")
@@ -378,21 +400,23 @@ if [ -n "$RESUME" ]; then
   CMD+=(--skip-git-repo-check)
   if [ -n "$MODEL" ]; then CMD+=(-m "$MODEL"); fi
   CMD+=(-c "model_reasoning_effort=\"$EFFORT\"")
-  if [ "$SEARCH" = 1 ]; then CMD+=(-c 'tools.web_search=true'); fi
+  if [ "$SEARCH" = 1 ]; then CMD+=(-c 'web_search="live"'); fi
   CMD+=(--json -o "$OUT_ANSWER")
 else
   CMD+=(-s read-only -c 'sandbox_mode="read-only"' -c 'approval_policy="never"')
   CMD+=(--skip-git-repo-check -C "$REPO")
   if [ -n "$MODEL" ]; then CMD+=(-m "$MODEL"); fi
   CMD+=(-c "model_reasoning_effort=\"$EFFORT\"")
-  if [ "$SEARCH" = 1 ]; then CMD+=(-c 'tools.web_search=true'); fi
+  if [ "$SEARCH" = 1 ]; then CMD+=(-c 'web_search="live"'); fi
   if [ "$NO_SCHEMA" = 1 ]; then
     CMD+=(--json -o "$OUT_MD")
   else
     CMD+=(--output-schema "$SCHEMA_FILE" --json -o "$OUT_JSON")
   fi
 fi
-CMD+=("$PROMPT_TEXT")
+# The prompt goes through stdin (`-`), not argv: no ARG_MAX / MAX_ARG_STRLEN
+# limit (128 KiB per argument on Linux) and it does not show up in `ps`.
+CMD+=(-)
 
 shell_quote() {
   case "$1" in
@@ -405,8 +429,8 @@ shell_quote() {
 
 warn_codex_version() {
   # Warn, never fail, when the installed codex looks older than the version
-  # this script is tested with (codex-cli 0.153; anything below 0.150.0 warns).
-  # `codex --version` prints e.g. "codex-cli 0.153.4". Pure bash 3.2 compare.
+  # this script is tested with (codex-cli 0.156; anything below 0.150.0 warns).
+  # `codex --version` prints e.g. "codex-cli 0.156.0". Pure bash 3.2 compare.
   local raw ver major minor shown
   raw="$(codex --version 2>&1)" || true
   raw="${raw%%$'\n'*}"
@@ -420,7 +444,7 @@ warn_codex_version() {
   else
     shown="of unknown version (codex --version said: ${raw:-nothing})"
   fi
-  note "warning: codex $shown detected; this script is tested with codex-cli 0.153 and later; continuing"
+  note "warning: codex $shown detected; this script is tested with codex-cli 0.156 (0.150 and later should work); continuing"
 }
 
 # The version check is cheap and runs even in --dry-run whenever codex is on
@@ -433,16 +457,12 @@ if [ "$DRY_RUN" = 1 ]; then
   printf 'repo: %s\n' "$REPO"
   printf 'prompt: %s\n' "$PROMPT_FILE"
   if [ -n "$RESUME" ]; then printf 'cwd: %s (cd before running; resume takes no -C)\n' "$REPO"; fi
+  printf 'stdin: %s (the prompt; the trailing - reads it)\n' "$PROMPT_FILE"
   printf 'command (one argument per line):\n'
-  last=$(( ${#CMD[@]} - 1 ))
   i=0
-  while [ $i -le $last ]; do
-    if [ $i -eq $last ]; then
-      printf '"$(cat %s)"\n' "$(shell_quote "$PROMPT_FILE")"
-    else
-      shell_quote "${CMD[$i]}"
-      printf '\n'
-    fi
+  while [ $i -lt ${#CMD[@]} ]; do
+    shell_quote "${CMD[$i]}"
+    printf '\n'
     i=$((i + 1))
   done
   exit 0
@@ -465,14 +485,31 @@ fi
 # Background panel of Claude Code). --quiet disables the follower.
 PROGRESS_PY="$SCRIPT_DIR/progress.py"
 START_EPOCH="$(date +%s)"
+CODEX_PID=""
+FOLLOW_PID=""
+on_signal() {
+  # on_signal <exit code>: Ctrl-C or kill of this script. Background jobs of a
+  # non-interactive shell ignore SIGINT and GNU timeout puts codex into its own
+  # process group, so nothing else would stop them: send TERM (timeout passes
+  # it on to codex), reap, and exit.
+  trap - INT TERM HUP
+  if [ -n "$CODEX_PID" ]; then kill -TERM "$CODEX_PID" 2>/dev/null; fi
+  if [ -n "$FOLLOW_PID" ]; then kill -TERM "$FOLLOW_PID" 2>/dev/null; fi
+  if [ -n "$CODEX_PID" ]; then wait "$CODEX_PID" 2>/dev/null; fi
+  if [ -n "$FOLLOW_PID" ]; then wait "$FOLLOW_PID" 2>/dev/null; fi
+  note "interrupted; codex was stopped; partial outputs: $BASE_NAME.*"
+  exit "$1"
+}
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
+trap 'on_signal 129' HUP
 set +e
 if [ -n "$RESUME" ]; then
-  ( cd "$REPO" && exec "${CMD[@]}" ) </dev/null >"$OUT_EVENTS" 2>"$OUT_LOG" &
+  ( cd "$REPO" && exec "${CMD[@]}" ) <"$PROMPT_FILE" >"$OUT_EVENTS" 2>"$OUT_LOG" &
 else
-  "${CMD[@]}" </dev/null >"$OUT_EVENTS" 2>"$OUT_LOG" &
+  "${CMD[@]}" <"$PROMPT_FILE" >"$OUT_EVENTS" 2>"$OUT_LOG" &
 fi
 CODEX_PID=$!
-FOLLOW_PID=""
 if [ "$QUIET" = 0 ] && [ -f "$PROGRESS_PY" ]; then
   python3 "$PROGRESS_PY" --file "$OUT_EVENTS" --label "$LABEL" --start "$START_EPOCH" --pid "$CODEX_PID" &
   FOLLOW_PID=$!
@@ -480,6 +517,7 @@ fi
 wait "$CODEX_PID"
 CODEX_EXIT=$?
 if [ -n "$FOLLOW_PID" ]; then wait "$FOLLOW_PID" 2>/dev/null; fi
+trap - INT TERM HUP
 set -e
 
 extract_thread_id() {

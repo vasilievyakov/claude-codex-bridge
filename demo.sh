@@ -52,6 +52,7 @@ def apply_discount(price: float, pct: float) -> float:
     return price * (1 - pct)
 PY
 : > "$REPO/tests/__init__.py"
+printf '__pycache__/\n' > "$REPO/.gitignore"
 cat > "$REPO/tests/test_pricing.py" <<'PY'
 import unittest
 

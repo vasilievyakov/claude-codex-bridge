@@ -14,6 +14,22 @@ TMP="$(mktemp -d "$SCRATCH/codex-worker-tests.XXXXXX")"
 # Canonical path: on macOS $TMPDIR lives under /var, a symlink to /private/var,
 # and the scripts print physical paths (pwd -P).
 TMP="$(cd "$TMP" && pwd -P)"
+# The temp dir goes away on any exit (also Ctrl-C) unless a test failed; stray
+# fake codex processes from the interrupt tests are killed first.
+KEEP_TMP=0
+cleanup() {
+  for pf in "$TMP"/*.fakepid; do
+    [ -f "$pf" ] && kill -TERM "$(cat "$pf" 2>/dev/null)" 2>/dev/null
+  done
+  if [ "$KEEP_TMP" = 1 ]; then
+    printf 'temp dir kept for inspection: %s\n' "$TMP"
+  else
+    rm -rf "$TMP"
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 PASS=0
 FAIL=0
@@ -64,15 +80,26 @@ BIN="$TMP/bin"
 mkdir -p "$BIN"
 cat > "$BIN/codex" <<'FAKE'
 #!/bin/bash
-# Fake codex: records argv and cwd, drains stdin, simulates edits in the work dir,
-# writes canned output, never touches the network.
+# Fake codex: records argv and cwd, reads the prompt from stdin, simulates edits
+# in the work dir, writes canned output, never touches the network.
 # `codex --version` is answered first and records nothing: the version probe is
 # not a run. FAKE_CODEX_VERSION overrides the reported version.
-if [ "${1:-}" = "--version" ]; then printf 'codex-cli %s\n' "${FAKE_CODEX_VERSION:-0.153.4}"; exit 0; fi
+# With `-` as the last argument (the prompt comes from stdin, as in real codex)
+# stdin is saved to $FAKE_CODEX_STDIN when set; otherwise it is drained.
+# FAKE_CODEX_SLEEP=<sec>: write the own pid to $FAKE_CODEX_PIDFILE and become
+# `sleep <sec>` (same pid), to test that interrupting the script stops codex.
+if [ "${1:-}" = "--version" ]; then printf 'codex-cli %s\n' "${FAKE_CODEX_VERSION:-0.156.0}"; exit 0; fi
 : "${FAKE_CODEX_ARGS:?FAKE_CODEX_ARGS must be set}"
 printf '%s\n' "$@" > "$FAKE_CODEX_ARGS"
 if [ -n "${FAKE_CODEX_PWD:-}" ]; then pwd -P > "$FAKE_CODEX_PWD"; fi
-cat > /dev/null
+last=""
+for a in "$@"; do last="$a"; done
+if [ "$last" = "-" ] && [ -n "${FAKE_CODEX_STDIN:-}" ]; then cat > "$FAKE_CODEX_STDIN"; else cat > /dev/null; fi
+if [ -n "${FAKE_CODEX_SLEEP:-}" ]; then
+  printf '%s\n' '{"type":"thread.started","thread_id":"thr_sleep_1"}'
+  printf '%s\n' "$$" > "$FAKE_CODEX_PIDFILE"
+  exec sleep "$FAKE_CODEX_SLEEP"
+fi
 out=""
 schema=0
 work="$(pwd -P)"
@@ -110,11 +137,11 @@ REPO="$TMP/repo"
 mkdir -p "$REPO/src"
 git -C "$REPO" init -q
 git -C "$REPO" symbolic-ref HEAD refs/heads/main
-GIT="git -C $REPO -c user.name=test -c user.email=test@example.com -c commit.gpgsign=false"
+gitc() { git -C "$REPO" -c user.name=test -c user.email=test@example.com -c commit.gpgsign=false "$@"; }
 printf 'alpha\n' > "$REPO/a.txt"
 printf 'def util():\n    return 1\n' > "$REPO/src/util.py"
-$GIT add a.txt src/util.py
-$GIT commit -qm "init"
+gitc add a.txt src/util.py
+gitc commit -qm "init"
 REPO="$(cd "$REPO" && pwd -P)"
 REPO_KEY="$(basename "$REPO")-$(python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest()[:8])' "$REPO")"
 
@@ -159,13 +186,15 @@ assert_contains "a: approval_policy never" "$out" 'approval_policy="never"'
 assert_line "a: argv --skip-git-repo-check" "$TMP/a.out" "--skip-git-repo-check"
 assert_line "a: argv -C" "$TMP/a.out" "-C"
 cline="$(grep -A1 -x -- '-C' "$TMP/a.out" | tail -1)"
+cline="${cline#\'}"; cline="${cline%\'}"  # dry-run shell-quotes paths with spaces
 assert_eq "a: -C points at the planned worktree" "$cline" "$WT_DIR/d1"
 assert_line "a: argv --output-schema" "$TMP/a.out" "--output-schema"
 assert_line "a: argv --json" "$TMP/a.out" "--json"
 assert_line "a: argv -o" "$TMP/a.out" "-o"
 assert_contains "a: effort high" "$out" 'model_reasoning_effort="high"'
 assert_not_contains "a: no --ephemeral" "$out" "--ephemeral"
-assert_not_contains "a: no network_access" "$out" "network_access"
+assert_line "a: network off explicitly" "$TMP/a.out" "sandbox_workspace_write.network_access=false"
+assert_not_contains "a: no network_access=true" "$out" "network_access=true"
 assert_contains "a: repo printed" "$out" "repo: $REPO"
 assert_contains "a: label printed" "$out" "label: d1"
 assert_contains "a: base printed" "$out" "base: "
@@ -176,10 +205,13 @@ if [ -e "$ARGS" ]; then fail "a: codex not run in dry-run"; else pass "a: codex 
 pfile="$(line_value "$out" prompt)"
 assert_file_contains "a: prompt has task text" "$pfile" "t"
 assert_file_contains "a: prompt names the branch" "$pfile" "codex/d1"
+assert_contains "a: stdin line names the prompt file" "$out" "stdin: $pfile"
+assert_eq "a: prompt is read from stdin (last argument -)" "$(tail -1 "$TMP/a.out")" "-"
+assert_not_contains "a: prompt text not in argv" "$out" "Delegated coding task"
 
 # --- b. full run --------------------------------------------------------------
 ARGS="$TMP/b.args"
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --task "add greeting" --label w1 --context src/util.py --out-dir "$OUT" 2>"$TMP/b.stderr")"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" FAKE_CODEX_STDIN="$TMP/b.stdin" bash "$SCRIPT" --task "add greeting" --label w1 --context src/util.py --out-dir "$OUT" 2>"$TMP/b.stderr")"
 rc=$?
 assert_eq "b: exit 0" "$rc" "0"
 WT_W1="$WT_DIR/w1"
@@ -198,6 +230,8 @@ assert_exists "b: markdown exists" "$B_MD"
 assert_file_contains "b: markdown has diffstat file" "$B_MD" "worker-output.txt"
 assert_file_contains "b: markdown has diffstat summary" "$B_MD" "insertion"
 assert_file_contains "b: markdown has apply hint" "$B_MD" "apply --3way"
+q3way="$(python3 -c 'import shlex,sys; print("git -C %s apply --3way %s" % (shlex.quote(sys.argv[1]), shlex.quote(sys.argv[2])))' "$REPO" "$B_PATCH")"
+assert_file_contains "b: apply hint paths are shell-quoted" "$B_MD" "$q3way"
 assert_exists "b: state file exists" "$STATE_W1"
 assert_eq "b: state thread_id" "$(json_get "$STATE_W1" thread_id)" "thr_test_123"
 assert_eq "b: state status" "$(json_get "$STATE_W1" status)" "done"
@@ -226,6 +260,9 @@ assert_line "b: argv workspace-write" "$ARGS" "workspace-write"
 assert_line "b: argv --output-schema" "$ARGS" "--output-schema"
 assert_no_line "b: argv no --ephemeral" "$ARGS" "--ephemeral"
 assert_no_line "b: argv no -m by default" "$ARGS" "-m"
+assert_eq "b: last argv is - (prompt on stdin)" "$(tail -1 "$ARGS")" "-"
+assert_file_contains "b: codex got the prompt on stdin" "$TMP/b.stdin" "add greeting"
+assert_line "b: argv network off explicitly" "$ARGS" "sandbox_workspace_write.network_access=false"
 
 # --- c. resume ----------------------------------------------------------------
 prev_run="$(json_get "$STATE_W1" last_run)"
@@ -233,7 +270,7 @@ prev_json="$(json_get "$STATE_W1" last_json)"
 sleep 1
 ARGS="$TMP/c.args"
 PWDF="$TMP/c.pwd"
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" FAKE_CODEX_PWD="$PWDF" bash "$SCRIPT" --resume --label w1 --task "also fix docs" --out-dir "$OUT" 2>"$TMP/c.stderr")"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" FAKE_CODEX_PWD="$PWDF" FAKE_CODEX_STDIN="$TMP/c.stdin" bash "$SCRIPT" --resume --label w1 --task "also fix docs" --out-dir "$OUT" 2>"$TMP/c.stderr")"
 rc=$?
 assert_eq "c: exit 0" "$rc" "0"
 head3="$(head -3 "$ARGS" | tr '\n' ' ')"
@@ -246,6 +283,9 @@ assert_line "c: argv --output-schema" "$ARGS" "--output-schema"
 assert_no_line "c: argv no -C" "$ARGS" "-C"
 assert_no_line "c: argv no -s" "$ARGS" "-s"
 assert_eq "c: fake pwd is the worktree" "$(cat "$PWDF" 2>/dev/null)" "$WT_W1"
+assert_eq "c: resume argv ends with - (prompt on stdin)" "$(tail -1 "$ARGS")" "-"
+assert_file_contains "c: resume prompt on stdin" "$TMP/c.stdin" "also fix docs"
+assert_line "c: resume network off explicitly" "$ARGS" "sandbox_workspace_write.network_access=false"
 C_PATCH="$(line_value "$out" patch)"
 if [ -s "$C_PATCH" ]; then pass "c: patch present"; else fail "c: patch present ($C_PATCH)"; fi
 assert_file_contains "c: patch cumulative (worker-output.txt)" "$C_PATCH" "worker-output.txt"
@@ -305,7 +345,7 @@ assert_absent "g: state gone" "$ST_DIR/w2.json"
 
 # --- h. in-place on a dirty repo ----------------------------------------------------
 printf 'def util():\n    return 2\n' > "$REPO/src/util.py"
-$GIT add src/util.py
+gitc add src/util.py
 ARGS="$TMP/h.args"
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --in-place --task "x" --label ip1 --out-dir "$OUT" 2>"$TMP/h.stderr")"
 rc=$?
@@ -324,7 +364,7 @@ assert_contains "h: stderr warns about dirty tree" "$(cat "$TMP/h.stderr")" "dir
 assert_eq "h: user index preserved" "$(git -C "$REPO" diff --cached --name-only)" "src/util.py"
 assert_exists "h: codex edited the repo directly" "$REPO/worker-output.txt"
 # restore the repo
-$GIT reset -q
+gitc reset -q
 git -C "$REPO" checkout -q -- .
 rm -f "$REPO/worker-output.txt"
 out="$(cd "$REPO" && bash "$SCRIPT" --cleanup --label ip1 --out-dir "$OUT" 2>&1)"
@@ -339,10 +379,13 @@ out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" FAKE_CODEX_NOOP=1 bash "$SCRIPT" --
 rc=$?
 assert_eq "i: exit 0" "$rc" "0"
 assert_line "i: argv -m" "$ARGS" "-m"
-assert_line "i: argv spark mapped" "$ARGS" "gpt-5.3-codex-spark"
+assert_line "i: argv model passed as given (no spark alias)" "$ARGS" "spark"
+assert_no_line "i: argv no stale spark mapping" "$ARGS" "gpt-5.3-codex-spark"
 assert_line "i: argv effort xhigh" "$ARGS" 'model_reasoning_effort="xhigh"'
 assert_line "i: argv network" "$ARGS" "sandbox_workspace_write.network_access=true"
-assert_line "i: argv search" "$ARGS" "tools.web_search=true"
+assert_no_line "i: argv no network=false with --network" "$ARGS" "sandbox_workspace_write.network_access=false"
+assert_line "i: argv search" "$ARGS" 'web_search="live"'
+assert_no_line "i: argv no legacy tools.web_search" "$ARGS" "tools.web_search=true"
 assert_no_line "i: argv no effort high" "$ARGS" 'model_reasoning_effort="high"'
 I_PATCH="$(line_value "$out" patch)"
 if [ -f "$I_PATCH" ] && [ ! -s "$I_PATCH" ]; then pass "i: empty patch file still created"; else fail "i: empty patch file still created ($I_PATCH)"; fi
@@ -398,9 +441,12 @@ assert_exists "j: state written despite failure" "$ST_DIR/f7.json"
 out="$(cd "$REPO" && bash "$SCRIPT" --cleanup --label f7 --out-dir "$OUT" 2>&1)"
 assert_eq "j: cleanup f7 exit 0" "$?" "0"
 
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/j9.args" bash "$SCRIPT" --task "a" --effort bogus --dry-run --out-dir "$OUT" 2>&1)"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/j9.args" bash "$SCRIPT" --task "a" --effort 'High;1' --dry-run --out-dir "$OUT" 2>&1)"
 rc=$?
-assert_eq "j: bad effort exit 2" "$rc" "2"
+assert_eq "j: malformed effort exit 2" "$rc" "2"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/j9b.args" bash "$SCRIPT" --task "a" --effort minimal --label ef1 --dry-run --out-dir "$OUT" 2>&1)"
+assert_eq "j: unlisted effort passes through (exit 0)" "$?" "0"
+assert_contains "j: effort minimal passed to codex" "$out" 'model_reasoning_effort="minimal"'
 
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/j10.args" bash "$SCRIPT" --resume --label nosuchworker --task "x" --out-dir "$OUT" 2>&1)"
 rc=$?
@@ -504,11 +550,11 @@ assert_eq "m: resume invoked gtimeout too" "$(cat "$GTLOG" 2>/dev/null)" "43"
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/n1.args" FAKE_CODEX_VERSION=0.120.0 bash "$SCRIPT" --task "t" --label ver1 --out-dir "$OUT" 2>"$TMP/n1.stderr")"
 rc=$?
 assert_eq "n: old codex still exit 0" "$rc" "0"
-assert_file_contains "n: old codex warning" "$TMP/n1.stderr" "codex-worker: warning: codex 0.120.0 detected; this script is tested with codex-cli 0.153 and later; continuing"
+assert_file_contains "n: old codex warning" "$TMP/n1.stderr" "codex-worker: warning: codex 0.120.0 detected; this script is tested with codex-cli 0.156 (0.150 and later should work); continuing"
 assert_contains "n: old codex run produced json" "$out" '"status": "done"'
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/n2.args" bash "$SCRIPT" --task "t" --label ver2 --out-dir "$OUT" 2>"$TMP/n2.stderr")"
 assert_eq "n: current codex exit 0" "$?" "0"
-if grep -q 'warning: codex' "$TMP/n2.stderr"; then fail "n: no version warning at 0.153.4"; else pass "n: no version warning at 0.153.4"; fi
+if grep -q 'warning: codex' "$TMP/n2.stderr"; then fail "n: no version warning at 0.156.0"; else pass "n: no version warning at 0.156.0"; fi
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/n3.args" FAKE_CODEX_VERSION=garbage bash "$SCRIPT" --dry-run --task "t" --label ver3 --out-dir "$OUT" 2>"$TMP/n3.stderr")"
 assert_eq "n: unparsable version exit 0" "$?" "0"
 assert_file_contains "n: unparsable version warns" "$TMP/n3.stderr" "warning: codex of unknown version"
@@ -521,13 +567,71 @@ out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/n6.args" FAKE_CODEX_VERSION=0.149.9 b
 assert_file_contains "n: warning just below boundary 0.149.9" "$TMP/n6.stderr" "warning: codex 0.149.9 detected"
 if [ -e "$TMP/n6.args" ]; then fail "n: --version probe is not a codex run in dry-run"; else pass "n: --version probe is not a codex run in dry-run"; fi
 
+# --- o. --repo pointing at a subdirectory ------------------------------------------
+ARGS="$TMP/o1.args"
+out="$(cd "$TMP" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --repo "$REPO/src" --task "sub" --label sub1 --context src/util.py --out-dir "$OUT" 2>"$TMP/o1.stderr")"
+assert_eq "o: subdir --repo run exit 0" "$?" "0"
+assert_exists "o: state keyed by the repo root" "$ST_DIR/sub1.json"
+assert_eq "o: state repo is the toplevel" "$(json_get "$ST_DIR/sub1.json" repo)" "$REPO"
+cline="$(grep -A1 -x -- '-C' "$ARGS" | tail -1)"
+assert_eq "o: worktree under the root's key" "$cline" "$WT_DIR/sub1"
+pfile="$(line_value "$out" prompt)"
+assert_file_contains "o: context path relative to the root" "$pfile" "- src/util.py"
+assert_file_contains "o: note about widening to the root" "$TMP/o1.stderr" "using its root $REPO"
+if grep -q "is not in" "$TMP/o1.stderr"; then fail "o: no false 'context not in base' warning"; else pass "o: no false 'context not in base' warning"; fi
+out="$(cd "$TMP" && bash "$SCRIPT" --cleanup --label sub1 --repo "$REPO/src" --out-dir "$OUT" 2>&1)"
+assert_eq "o: cleanup via the subdirectory exit 0" "$?" "0"
+assert_absent "o: cleanup via the subdirectory removed the state" "$ST_DIR/sub1.json"
+assert_absent "o: cleanup via the subdirectory removed the worktree" "$WT_DIR/sub1"
+out="$(cd "$TMP" && FAKE_CODEX_ARGS="$TMP/o2.args" bash "$SCRIPT" --in-place --repo "$REPO/src" --task "t" --label sub2 --dry-run --out-dir "$OUT" 2>&1)"
+assert_contains "o: --in-place keeps the subdirectory" "$out" "repo: $REPO/src"
+
+# --- p. interrupting the script stops codex and records it ---------------------------
+# The script is started in the background with SIGINT reset to default (a
+# background job of a non-interactive shell would otherwise inherit SIGINT as
+# ignored, and bash cannot trap a signal ignored on entry).
+SIGDFL_PY='import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])'
+wait_for_file() { # wait_for_file <path> ; up to ~10 s
+  local k=0
+  while [ ! -s "$1" ] && [ $k -lt 100 ]; do sleep 0.1; k=$((k + 1)); done
+  [ -s "$1" ]
+}
+gone() { # gone <pid> ; true once the process has disappeared (up to ~5 s)
+  local k=0
+  while kill -0 "$1" 2>/dev/null && [ $k -lt 50 ]; do sleep 0.1; k=$((k + 1)); done
+  ! kill -0 "$1" 2>/dev/null
+}
+for sig in TERM INT; do
+  PIDF="$TMP/p-$sig.fakepid"
+  FAKE_CODEX_ARGS="$TMP/p-$sig.args" FAKE_CODEX_SLEEP=60 FAKE_CODEX_PIDFILE="$PIDF" \
+    python3 -c "$SIGDFL_PY" bash "$SCRIPT" --repo "$REPO" --task "slow" --label "int$sig" --out-dir "$OUT" \
+    >"$TMP/p-$sig.out" 2>"$TMP/p-$sig.stderr" &
+  spid=$!
+  if wait_for_file "$PIDF"; then
+    fpid="$(cat "$PIDF")"
+    assert_eq "p: SIG$sig state running while codex runs" "$(json_get "$ST_DIR/int$sig.json" status)" "running"
+    sleep 0.3
+    kill -"$sig" "$spid"
+    wait "$spid"
+    rc=$?
+    if [ "$sig" = INT ]; then want=130; else want=143; fi
+    assert_eq "p: SIG$sig exits $want" "$rc" "$want"
+    if gone "$fpid"; then pass "p: SIG$sig stops the fake codex"; else fail "p: SIG$sig stops the fake codex (pid $fpid still alive)"; fi
+    assert_eq "p: SIG$sig state status interrupted" "$(json_get "$ST_DIR/int$sig.json" status)" "interrupted"
+    assert_eq "p: SIG$sig state keeps the thread id" "$(json_get "$ST_DIR/int$sig.json" thread_id)" "thr_sleep_1"
+    assert_file_contains "p: SIG$sig says interrupted" "$TMP/p-$sig.stderr" "interrupted"
+  else
+    kill "$spid" 2>/dev/null
+    fail "p: SIG$sig fake codex started"
+  fi
+  out="$(bash "$SCRIPT" --cleanup --label "int$sig" --repo "$REPO" --out-dir "$OUT" 2>&1)"
+  assert_eq "p: SIG$sig cleanup exit 0" "$?" "0"
+done
+
 # --- summary ---------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 if [ "$FAIL" -ne 0 ]; then
-  printf 'temp dir kept for inspection: %s\n' "$TMP"
+  KEEP_TMP=1
   exit 1
 fi
-# remove worktrees registered in the temp repo before deleting the tree
-git -C "$REPO" worktree prune >/dev/null 2>&1 || true
-rm -rf "$TMP"
 exit 0

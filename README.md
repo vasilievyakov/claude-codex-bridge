@@ -12,7 +12,7 @@ Site: [vasilievyakov.github.io/claude-codex-bridge](https://vasilievyakov.github
 
 - **A second opinion.** Say "ask Codex for a second opinion" in Claude Code. Codex reads your changes without touching them and returns a list of problems, each with a file and line. Claude checks every item against the code and tells you which ones are real. Twenty seconds in the demo.
 - **A worker.** Say "give this task to Codex". Codex does it in a separate copy of your repository and returns a patch. You see the diff and decide. Several workers can run at once.
-- **You can watch.** Progress lines in the terminal while Codex works, a `codex:N` counter in the status line, a live table in a second window.
+- **You can watch.** Progress lines in the terminal while Codex works, a `codex:N` counter appended to your own status line (how many Codex agents run right now; installed by default), a live table in a second window.
 
 ## Install
 
@@ -64,7 +64,7 @@ The two models never talk to each other. Everything between them is a file you c
 |---|---|
 | `skills/second-opinion/` | The review skill: instructions for Claude, the script, the answer format, tests |
 | `skills/codex-worker/` | The worker skill: same shape |
-| `extras/` | Optional: live table of Codex processes, status line counter, a template for one instructions file both agents read |
+| `extras/` | Status line Codex signal and its installer (`install-statusline.sh`, required step of the install); optional: live table of Codex processes, a template for one instructions file both agents read |
 | `demo.sh` | One real run on a throwaway repo |
 | `INSTALL.md`, `INSTALL.ru.md` | The install text for your agent |
 | `docs/` | The site and the detailed walk-through |
@@ -75,7 +75,7 @@ The two models never talk to each other. Everything between them is a file you c
 - The script prints `exit:` and `log:` paths. Read the log first.
 - Exit code 2: wrong arguments. 3: Codex answered outside the format, the raw answer is at the `json:` path. 4 (worker only): branch or worktree already exists, change the label or clean up. 124: time limit.
 - `--dry-run` prints the exact Codex command and the prompt without running anything.
-- Codex sees only what it is given: the task, the focus, the files to read, and the shared `~/.agents/AGENTS.md`. It does not read `CLAUDE.md`. If it "did not know" something, put it into the focus or the task.
+- Codex sees only what it is given: the task, the focus, the files to read, and the shared `~/.agents/AGENTS.md`. It does not read your `~/.claude/CLAUDE.md`; a project `CLAUDE.md` only when the project has no `AGENTS.md` (install step 5 turns this fallback on). If it "did not know" something, put it into the focus or the task.
 - Tests without Codex and without cost: `bash skills/second-opinion/tests/run.sh` and `bash skills/codex-worker/tests/run.sh`.
 
 ## Contributing

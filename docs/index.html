@@ -174,7 +174,7 @@ footer a{color:var(--bone-dim)}
     <div class="card">
       <span class="label">You can watch</span>
       <h3>Nothing runs in the dark</h3>
-      <p>Progress lines in the terminal while Codex works, a <code>codex:N</code> counter in the status line, a live table in a second window.</p>
+      <p>Progress lines in the terminal while Codex works, a <code>codex:N</code> counter appended to your own status line (how many Codex agents run right now; installed by default), a live table in a second window.</p>
     </div>
   </div>
 </section>
@@ -249,7 +249,7 @@ footer a{color:var(--bone-dim)}
       <tbody>
         <tr><td>skills/second-opinion/</td><td>The review skill: instructions for Claude, the script, the answer format, tests</td></tr>
         <tr><td>skills/codex-worker/</td><td>The worker skill: same shape</td></tr>
-        <tr><td>extras/</td><td>Optional: live table of Codex processes, status line counter, a template for one instructions file both agents read</td></tr>
+        <tr><td>extras/</td><td>Status line Codex signal and its installer (required install step); optional: live table of Codex processes, a template for one instructions file both agents read</td></tr>
         <tr><td>demo.sh</td><td>One real run on a throwaway repo</td></tr>
         <tr><td>INSTALL.md, INSTALL.ru.md</td><td>The install text for your agent</td></tr>
         <tr><td>docs/</td><td>The site and the detailed walk-through</td></tr>
@@ -268,7 +268,7 @@ footer a{color:var(--bone-dim)}
     <li>The script prints <code>exit:</code> and <code>log:</code> paths. Read the log first.</li>
     <li>Exit code 2: wrong arguments. 3: Codex answered outside the format, the raw answer is at the <code>json:</code> path. 4 (worker only): branch or worktree already exists, change the label or clean up. 124: time limit.</li>
     <li><code>--dry-run</code> prints the exact Codex command and the prompt without running anything.</li>
-    <li>Codex sees only what it is given: the task, the focus, the files to read, and the shared <code>~/.agents/AGENTS.md</code>. It does not read <code>CLAUDE.md</code>. If it "did not know" something, put it into the focus or the task.</li>
+    <li>Codex sees only what it is given: the task, the focus, the files to read, and the shared <code>~/.agents/AGENTS.md</code>. It does not read your <code>~/.claude/CLAUDE.md</code>; a project <code>CLAUDE.md</code> only when the project has no <code>AGENTS.md</code> (install step 5 turns this fallback on). If it "did not know" something, put it into the focus or the task.</li>
     <li>Tests without Codex and without cost: <code>bash skills/second-opinion/tests/run.sh</code> and <code>bash skills/codex-worker/tests/run.sh</code>.</li>
   </ul>
 </section>
@@ -354,7 +354,7 @@ bash demo.sh</code></pre>
     <div class="card">
       <span class="label">Видимость</span>
       <h3>Ничего не работает втемную</h3>
-      <p>Строки хода в терминале, пока Codex работает, счетчик <code>codex:N</code> в статус-строке, живая таблица во втором окне.</p>
+      <p>Строки хода в терминале, пока Codex работает, счетчик <code>codex:N</code> в конце твоей статус-строки (сколько агентов Codex работает прямо сейчас; ставится при установке), живая таблица во втором окне.</p>
     </div>
   </div>
 </section>
@@ -429,7 +429,7 @@ bash demo.sh</code></pre>
       <tbody>
         <tr><td>skills/second-opinion/</td><td>Скилл ревью: инструкции для Claude, скрипт, формат ответа, тесты</td></tr>
         <tr><td>skills/codex-worker/</td><td>Скилл воркера: то же устройство</td></tr>
-        <tr><td>extras/</td><td>По желанию: живая таблица процессов Codex, счетчик в статус-строке, шаблон одного файла инструкций, который читают оба агента</td></tr>
+        <tr><td>extras/</td><td>Сигнал Codex в статус-строке и его установщик (обязательный шаг установки); по желанию: живая таблица процессов Codex, шаблон одного файла инструкций, который читают оба агента</td></tr>
         <tr><td>demo.sh</td><td>Один настоящий прогон на одноразовом репозитории</td></tr>
         <tr><td>INSTALL.md, INSTALL.ru.md</td><td>Текст установки для твоего агента</td></tr>
         <tr><td>docs/</td><td>Сайт и подробный разбор</td></tr>
@@ -448,7 +448,7 @@ bash demo.sh</code></pre>
     <li>Скрипт печатает пути <code>exit:</code> и <code>log:</code>. Сначала читай журнал.</li>
     <li>Код выхода 2: неверные аргументы. 3: Codex ответил не по формату, сырой ответ лежит по пути <code>json:</code>. 4 (только воркер): ветка или worktree уже есть, смени метку или прибери. 124: лимит времени.</li>
     <li><code>--dry-run</code> печатает точную команду Codex и промпт, ничего не запуская.</li>
-    <li>Codex видит только то, что ему дали: задачу, фокус, файлы для чтения и общий <code>~/.agents/AGENTS.md</code>. <code>CLAUDE.md</code> он не читает. Если он чего-то «не знал», положи это в фокус или в задачу.</li>
+    <li>Codex видит только то, что ему дали: задачу, фокус, файлы для чтения и общий <code>~/.agents/AGENTS.md</code>. Твой <code>~/.claude/CLAUDE.md</code> он не читает; проектный <code>CLAUDE.md</code> читает, только если в проекте нет <code>AGENTS.md</code> (этот запасной вариант включает шаг 5 установки). Если он чего-то «не знал», положи это в фокус или в задачу.</li>
     <li>Тесты без Codex и без затрат: <code>bash skills/second-opinion/tests/run.sh</code> и <code>bash skills/codex-worker/tests/run.sh</code>.</li>
   </ul>
 </section>

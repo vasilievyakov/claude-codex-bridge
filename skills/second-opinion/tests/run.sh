@@ -14,6 +14,22 @@ TMP="$(mktemp -d "$SCRATCH/second-opinion-tests.XXXXXX")"
 # Canonical path: on macOS $TMPDIR lives under /var, a symlink to /private/var,
 # and the scripts print physical paths (pwd -P).
 TMP="$(cd "$TMP" && pwd -P)"
+# The temp dir goes away on any exit (also Ctrl-C) unless a test failed; stray
+# fake codex processes from the interrupt tests are killed first.
+KEEP_TMP=0
+cleanup() {
+  for pf in "$TMP"/*.fakepid; do
+    [ -f "$pf" ] && kill -TERM "$(cat "$pf" 2>/dev/null)" 2>/dev/null
+  done
+  if [ "$KEEP_TMP" = 1 ]; then
+    printf 'temp dir kept for inspection: %s\n' "$TMP"
+  else
+    rm -rf "$TMP"
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 PASS=0
 FAIL=0
@@ -58,13 +74,24 @@ BIN="$TMP/bin"
 mkdir -p "$BIN"
 cat > "$BIN/codex" <<'FAKE'
 #!/bin/bash
-# Fake codex: records argv, drains stdin, writes canned output, never touches the network.
+# Fake codex: records argv, reads the prompt from stdin, writes canned output,
+# never touches the network.
 # `codex --version` is answered first and records nothing: the version probe is
 # not a run. FAKE_CODEX_VERSION overrides the reported version.
-if [ "${1:-}" = "--version" ]; then printf 'codex-cli %s\n' "${FAKE_CODEX_VERSION:-0.153.4}"; exit 0; fi
+# With `-` as the last argument (the prompt comes from stdin, as in real codex)
+# stdin is saved to $FAKE_CODEX_STDIN when set; otherwise it is drained.
+# FAKE_CODEX_SLEEP=<sec>: write the own pid to $FAKE_CODEX_PIDFILE and become
+# `sleep <sec>` (same pid), to test that interrupting the script stops codex.
+if [ "${1:-}" = "--version" ]; then printf 'codex-cli %s\n' "${FAKE_CODEX_VERSION:-0.156.0}"; exit 0; fi
 : "${FAKE_CODEX_ARGS:?FAKE_CODEX_ARGS must be set}"
 printf '%s\n' "$@" > "$FAKE_CODEX_ARGS"
-cat > /dev/null
+last=""
+for a in "$@"; do last="$a"; done
+if [ "$last" = "-" ] && [ -n "${FAKE_CODEX_STDIN:-}" ]; then cat > "$FAKE_CODEX_STDIN"; else cat > /dev/null; fi
+if [ -n "${FAKE_CODEX_SLEEP:-}" ]; then
+  printf '%s\n' "$$" > "$FAKE_CODEX_PIDFILE"
+  exec sleep "$FAKE_CODEX_SLEEP"
+fi
 out=""
 schema=0
 prev=""
@@ -102,10 +129,14 @@ REPO="$TMP/repo"
 mkdir -p "$REPO"
 git -C "$REPO" init -q
 git -C "$REPO" symbolic-ref HEAD refs/heads/main
-GIT="git -C $REPO -c user.name=test -c user.email=test@example.com -c commit.gpgsign=false"
+gitc() { git -C "$REPO" -c user.name=test -c user.email=test@example.com -c commit.gpgsign=false "$@"; }
 printf 'hello\n' > "$REPO/hello.txt"
-$GIT add hello.txt
-$GIT commit -qm "init"
+gitc add hello.txt
+gitc commit -qm "init"
+gitc branch base0
+printf 'lib\n' > "$REPO/lib.txt"
+gitc add lib.txt
+gitc commit -qm "second"
 printf 'hello world' > "$REPO/hello.txt"
 printf 'new file\n' > "$REPO/untracked.txt"
 
@@ -130,6 +161,7 @@ assert_contains "a: sandbox_mode override" "$out" 'sandbox_mode="read-only"'
 assert_contains "a: approval_policy never" "$out" 'approval_policy="never"'
 assert_contains "a: skip git repo check" "$out" "--skip-git-repo-check"
 cline="$(printf '%s\n' "$out" | grep -A1 -x -- '-C' | tail -1)"
+cline="${cline#\'}"; cline="${cline%\'}"  # dry-run shell-quotes paths with spaces
 assert_eq "a: -C <repo>" "$cline" "$REPO"
 assert_contains "a: output-schema" "$out" "--output-schema"
 assert_contains "a: effort high" "$out" 'model_reasoning_effort="high"'
@@ -139,10 +171,14 @@ if [ -e "$ARGS" ]; then fail "a: codex not run in dry-run"; else pass "a: codex 
 pfile="$(line_value "$out" prompt)"
 assert_file_contains "a: prompt mentions git diff --cached" "$pfile" "git diff --cached"
 assert_file_contains "a: prompt mentions untracked" "$pfile" "untracked"
+assert_contains "a: stdin line names the prompt file" "$out" "stdin: $pfile"
+lastarg="$(printf '%s\n' "$out" | tail -1)"
+assert_eq "a: prompt is read from stdin (last argument -)" "$lastarg" "-"
+assert_not_contains "a: prompt text not in argv" "$out" "Independent second-opinion review"
 
 # --- b. full run, uncommitted ----------------------------------------------
 ARGS="$TMP/b.args"
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --uncommitted --label t1 --out-dir "$OUT" 2>"$TMP/b.stderr")"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" FAKE_CODEX_STDIN="$TMP/b.stdin" bash "$SCRIPT" --uncommitted --label t1 --out-dir "$OUT" 2>"$TMP/b.stderr")"
 rc=$?
 assert_eq "b: exit 0" "$rc" "0"
 assert_contains "b: json: line" "$out" "json: "
@@ -161,16 +197,19 @@ assert_line "b: argv exec" "$ARGS" "exec"
 assert_no_line "b: argv no --ephemeral" "$ARGS" "--ephemeral"
 assert_no_line "b: argv no -m by default" "$ARGS" "-m"
 assert_contains "b: stdout ends with json body" "$out" '"verdict": "needs_changes"'
+assert_eq "b: last argv is - (prompt on stdin)" "$(tail -1 "$ARGS")" "-"
+assert_file_contains "b: codex got the prompt on stdin" "$TMP/b.stdin" "Independent second-opinion review"
+assert_no_line "b: prompt heading not in argv" "$ARGS" "# Independent second-opinion review"
 
 # --- c. no-schema, base ------------------------------------------------------
 ARGS="$TMP/c.args"
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --no-schema --base main --label c --out-dir "$OUT" 2>"$TMP/c.stderr")"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --no-schema --base base0 --label c --out-dir "$OUT" 2>"$TMP/c.stderr")"
 rc=$?
 assert_eq "c: exit 0" "$rc" "0"
 assert_no_line "c: argv no --output-schema" "$ARGS" "--output-schema"
 pfile="$(line_value "$out" prompt)"
-assert_file_contains "c: prompt has git diff main...HEAD" "$pfile" "git diff main...HEAD"
-assert_file_contains "c: prompt has git log" "$pfile" "git log --oneline main..HEAD"
+assert_file_contains "c: prompt has git diff base0...HEAD" "$pfile" "git diff base0...HEAD"
+assert_file_contains "c: prompt has git log" "$pfile" "git log --oneline base0..HEAD"
 assert_file_contains "c: prompt asks for markdown" "$pfile" "arkdown"
 mfile="$(line_value "$out" markdown)"
 assert_file_contains "c: markdown is codex prose" "$mfile" "Prose review from fake codex"
@@ -197,8 +236,12 @@ assert_eq "e: exit 0" "$rc" "0"
 assert_line "e: argv -m" "$ARGS" "-m"
 assert_line "e: argv model" "$ARGS" "gpt-5.4"
 assert_line "e: argv effort xhigh" "$ARGS" 'model_reasoning_effort="xhigh"'
-assert_line "e: argv web search" "$ARGS" "tools.web_search=true"
+assert_line "e: argv web search" "$ARGS" 'web_search="live"'
+assert_no_line "e: argv no legacy tools.web_search" "$ARGS" "tools.web_search=true"
 assert_no_line "e: argv no effort high" "$ARGS" 'model_reasoning_effort="high"'
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/e2.args" bash "$SCRIPT" --effort minimal --dry-run --label e2 --out-dir "$OUT" 2>&1)"
+assert_eq "e: unlisted effort passes through (exit 0)" "$?" "0"
+assert_contains "e: effort minimal passed to codex" "$out" 'model_reasoning_effort="minimal"'
 
 # --- f. two scopes -------------------------------------------------------------
 ARGS="$TMP/f.args"
@@ -211,7 +254,7 @@ if [ -e "$ARGS" ]; then fail "f: codex not run"; else pass "f: codex not run"; f
 
 # --- g. resume ------------------------------------------------------------------
 ARGS="$TMP/g.args"
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --resume thr_x --focus "argue" --label g --out-dir "$OUT" 2>"$TMP/g.stderr")"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" FAKE_CODEX_STDIN="$TMP/g.stdin" bash "$SCRIPT" --resume thr_x --focus "argue" --label g --out-dir "$OUT" 2>"$TMP/g.stderr")"
 rc=$?
 assert_eq "g: exit 0" "$rc" "0"
 head3="$(head -3 "$ARGS" | tr '\n' ' ')"
@@ -220,7 +263,8 @@ assert_line "g: argv sandbox override" "$ARGS" 'sandbox_mode="read-only"'
 assert_line "g: argv approval never" "$ARGS" 'approval_policy="never"'
 assert_no_line "g: argv no -C" "$ARGS" "-C"
 assert_no_line "g: argv no -s" "$ARGS" "-s"
-assert_line "g: argv prompt is focus" "$ARGS" "argue"
+assert_eq "g: resume argv ends with - (prompt on stdin)" "$(tail -1 "$ARGS")" "-"
+assert_eq "g: resume prompt on stdin is the focus" "$(cat "$TMP/g.stdin" 2>/dev/null)" "argue"
 assert_contains "g: thread_id echoed" "$out" "thread_id: thr_x"
 
 # --- h. codex failure -----------------------------------------------------------
@@ -239,9 +283,9 @@ pfile="$(line_value "$out" prompt)"
 assert_file_contains "i: prompt lists first file" "$pfile" "$REPO/hello.txt"
 assert_file_contains "i: prompt lists second file" "$pfile" "$REPO/untracked.txt"
 
-out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/j.args" bash "$SCRIPT" --effort bogus --dry-run --out-dir "$OUT" 2>&1)"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/j.args" bash "$SCRIPT" --effort 'High;1' --dry-run --out-dir "$OUT" 2>&1)"
 rc=$?
-assert_ne "j: bad effort rejected" "$rc" "0"
+assert_eq "j: malformed effort rejected with 2" "$rc" "2"
 assert_contains "j: bad effort message" "$out" "effort"
 
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/k.args" bash "$SCRIPT" --resume thr_x --dry-run --out-dir "$OUT" 2>&1)"
@@ -347,11 +391,11 @@ assert_eq "o: resume invoked gtimeout too" "$(cat "$GTLOG" 2>/dev/null)" "43"
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/p1.args" FAKE_CODEX_VERSION=0.120.0 bash "$SCRIPT" --uncommitted --label p1 --out-dir "$OUT" 2>"$TMP/p1.stderr")"
 rc=$?
 assert_eq "p: old codex still exit 0" "$rc" "0"
-assert_file_contains "p: old codex warning" "$TMP/p1.stderr" "second-opinion: warning: codex 0.120.0 detected; this script is tested with codex-cli 0.153 and later; continuing"
+assert_file_contains "p: old codex warning" "$TMP/p1.stderr" "second-opinion: warning: codex 0.120.0 detected; this script is tested with codex-cli 0.156 (0.150 and later should work); continuing"
 assert_contains "p: old codex run produced json" "$out" '"verdict": "needs_changes"'
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/p2.args" bash "$SCRIPT" --uncommitted --label p2 --out-dir "$OUT" 2>"$TMP/p2.stderr")"
 assert_eq "p: current codex exit 0" "$?" "0"
-if grep -q 'warning: codex' "$TMP/p2.stderr"; then fail "p: no version warning at 0.153.4"; else pass "p: no version warning at 0.153.4"; fi
+if grep -q 'warning: codex' "$TMP/p2.stderr"; then fail "p: no version warning at 0.156.0"; else pass "p: no version warning at 0.156.0"; fi
 out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/p3.args" FAKE_CODEX_VERSION=garbage bash "$SCRIPT" --dry-run --uncommitted --label p3 --out-dir "$OUT" 2>"$TMP/p3.stderr")"
 assert_eq "p: unparsable version exit 0" "$?" "0"
 assert_file_contains "p: unparsable version warns" "$TMP/p3.stderr" "warning: codex of unknown version"
@@ -364,11 +408,84 @@ out="$(cd "$REPO" && FAKE_CODEX_ARGS="$TMP/p6.args" FAKE_CODEX_VERSION=0.149.9 b
 assert_file_contains "p: warning just below boundary 0.149.9" "$TMP/p6.stderr" "warning: codex 0.149.9 detected"
 if [ -e "$TMP/p6.args" ]; then fail "p: --version probe is not a codex run in dry-run"; else pass "p: --version probe is not a codex run in dry-run"; fi
 
+# --- q. nothing to review -------------------------------------------------------------
+ARGS="$TMP/q1.args"
+rm -f "$ARGS"
+out="$(cd "$REPO" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --base main --label q1 --out-dir "$OUT" 2>&1)"
+assert_eq "q: --base with no changes exits 5" "$?" "5"
+assert_contains "q: --base message says nothing to review" "$out" "nothing to review"
+if [ -e "$ARGS" ]; then fail "q: codex not run for an empty --base diff"; else pass "q: codex not run for an empty --base diff"; fi
+CLEAN="$TMP/clean repo"
+mkdir -p "$CLEAN"
+git -C "$CLEAN" init -q
+printf 'x\n' > "$CLEAN/x.txt"
+git -C "$CLEAN" add x.txt
+git -C "$CLEAN" -c user.name=test -c user.email=test@example.com -c commit.gpgsign=false commit -qm init
+printf 'ignored.log\n' > "$CLEAN/.git/info/exclude"
+printf 'noise\n' > "$CLEAN/ignored.log"
+ARGS="$TMP/q2.args"
+rm -f "$ARGS"
+out="$(cd "$CLEAN" && FAKE_CODEX_ARGS="$ARGS" bash "$SCRIPT" --uncommitted --label q2 --out-dir "$OUT" 2>&1)"
+assert_eq "q: clean tree (ignored files only) exits 5" "$?" "5"
+assert_contains "q: clean tree message" "$out" "working tree"
+if [ -e "$ARGS" ]; then fail "q: codex not run on a clean tree"; else pass "q: codex not run on a clean tree"; fi
+printf 'new\n' > "$CLEAN/new.txt"
+out="$(cd "$CLEAN" && FAKE_CODEX_ARGS="$TMP/q3.args" bash "$SCRIPT" --uncommitted --dry-run --label q3 --out-dir "$OUT" 2>&1)"
+assert_eq "q: an untracked file alone is something to review" "$?" "0"
+out="$(bash "$SCRIPT" --help 2>&1)"
+assert_contains "q: exit code 5 documented in --help" "$out" "5 nothing to review"
+
+# --- r. same label in parallel -----------------------------------------------------------
+i=1
+while [ $i -le 4 ]; do
+  ( cd "$REPO" && FAKE_CODEX_ARGS="$TMP/r.args" bash "$SCRIPT" --dry-run --uncommitted --label same --out-dir "$OUT/par" > "$TMP/r$i.out" 2>/dev/null ) &
+  i=$((i + 1))
+done
+wait
+distinct="$(for i in 1 2 3 4; do line_value "$(cat "$TMP/r$i.out")" prompt; done | sort -u | grep -c .)"
+assert_eq "r: four parallel runs with one label get four prompt files" "$distinct" "4"
+
+# --- s. interrupting the script stops codex ----------------------------------------------
+# The script is started in the background with SIGINT reset to default (a
+# background job of a non-interactive shell would otherwise inherit SIGINT as
+# ignored, and bash cannot trap a signal ignored on entry).
+SIGDFL_PY='import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])'
+wait_for_file() { # wait_for_file <path> ; up to ~10 s
+  local k=0
+  while [ ! -s "$1" ] && [ $k -lt 100 ]; do sleep 0.1; k=$((k + 1)); done
+  [ -s "$1" ]
+}
+gone() { # gone <pid> ; true once the process has disappeared (up to ~5 s)
+  local k=0
+  while kill -0 "$1" 2>/dev/null && [ $k -lt 50 ]; do sleep 0.1; k=$((k + 1)); done
+  ! kill -0 "$1" 2>/dev/null
+}
+for sig in INT TERM; do
+  PIDF="$TMP/s-$sig.fakepid"
+  FAKE_CODEX_ARGS="$TMP/s-$sig.args" FAKE_CODEX_SLEEP=60 FAKE_CODEX_PIDFILE="$PIDF" \
+    python3 -c "$SIGDFL_PY" bash "$SCRIPT" --uncommitted --repo "$REPO" --label "s$sig" --out-dir "$OUT" \
+    >"$TMP/s-$sig.out" 2>"$TMP/s-$sig.stderr" &
+  spid=$!
+  if wait_for_file "$PIDF"; then
+    fpid="$(cat "$PIDF")"
+    sleep 0.3
+    kill -"$sig" "$spid"
+    wait "$spid"
+    rc=$?
+    if [ "$sig" = INT ]; then want=130; else want=143; fi
+    assert_eq "s: SIG$sig exits $want" "$rc" "$want"
+    if gone "$fpid"; then pass "s: SIG$sig stops the fake codex"; else fail "s: SIG$sig stops the fake codex (pid $fpid still alive)"; fi
+    assert_file_contains "s: SIG$sig says interrupted" "$TMP/s-$sig.stderr" "interrupted"
+  else
+    kill "$spid" 2>/dev/null
+    fail "s: SIG$sig fake codex started"
+  fi
+done
+
 # --- summary ---------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 if [ "$FAIL" -ne 0 ]; then
-  printf 'temp dir kept for inspection: %s\n' "$TMP"
+  KEEP_TMP=1
   exit 1
 fi
-rm -rf "$TMP"
 exit 0

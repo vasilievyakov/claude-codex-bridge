@@ -1,8 +1,16 @@
 # extras
 
-Optional tools around the Claude Code + Codex bridge: two ways to see what Codex is doing, and a template for one instructions file shared by both agents. Nothing here is required by the skills; each file stands alone. macOS and Linux, any Codex install (npm, Homebrew, downloaded binary). No dependencies beyond bash, python3 and `ps`/`pgrep`.
+Tools around the Claude Code + Codex bridge. The status line Codex signal is part of the install (`install-statusline.sh`); the rest is optional: a live table of Codex processes and a template for one instructions file shared by both agents. macOS and Linux, any Codex install (npm, Homebrew, downloaded binary). No dependencies beyond bash, python3 and `ps`/`pgrep`.
 
 Every user's status line and instruction files are different, so wiring these in is a job for your agent, not for an installer. Copy the "Give this to your agent" block into Claude Code and let it make the edit.
+
+## install-statusline.sh (required step of the install)
+
+Adds the Codex signal to the Claude Code status line: ` | codex:N` while N Codex agents run, nothing when Codex is idle. The user's own status line is not edited or copied: its command is saved to `~/.claude/statusline/base-command`, `statusLine.command` in `~/.claude/settings.json` is pointed at `statusline-codex.sh`, which runs the saved command and appends only the segment. With no status line, `statusline-minimal.sh` is used. `settings.json` is backed up first; a second run changes nothing.
+
+    bash extras/install-statusline.sh              # install
+    bash extras/install-statusline.sh --self-test  # fake `codex exec` process, expects codex:1
+    bash extras/install-statusline.sh --uninstall  # restore the previous status line
 
 ## codex-watch.py
 
@@ -54,9 +62,17 @@ Give this to your agent:
 
 ## По-русски
 
-Необязательные инструменты вокруг связки Claude Code + Codex: два способа видеть, что делает Codex, и шаблон одного файла инструкций, который читают оба агента. Скиллам ничего из этого не нужно, каждый файл самостоятелен. macOS и Linux, любой способ установки Codex (npm, Homebrew, скачанный бинарник). Зависимости: bash, python3 и `ps`/`pgrep`.
+Инструменты вокруг связки Claude Code + Codex. Сигнал Codex в статус-строке входит в установку (`install-statusline.sh`); остальное по желанию: живая таблица процессов Codex и шаблон одного файла инструкций, который читают оба агента. macOS и Linux, любой способ установки Codex (npm, Homebrew, скачанный бинарник). Зависимости: bash, python3 и `ps`/`pgrep`.
 
 Строка состояния и файлы инструкций у каждого свои, поэтому встраивание делает агент, а не установщик. Скопируй блок «Отдай агенту» в Claude Code и пусть он внесет правку.
+
+### install-statusline.sh (обязательный шаг установки)
+
+Добавляет сигнал Codex в статус-строку Claude Code: ` | codex:N`, пока работают N агентов Codex, и ничего, когда Codex простаивает. Статус-строка пользователя не правится и не копируется: ее команда сохраняется в `~/.claude/statusline/base-command`, `statusLine.command` в `~/.claude/settings.json` указывает на `statusline-codex.sh`, который запускает сохраненную команду и дописывает только сегмент. Если статус-строки нет, используется `statusline-minimal.sh`. Перед правкой делается бэкап `settings.json`; повторный запуск ничего не меняет.
+
+    bash extras/install-statusline.sh              # установить
+    bash extras/install-statusline.sh --self-test  # поддельный процесс `codex exec`, ожидается codex:1
+    bash extras/install-statusline.sh --uninstall  # вернуть прежнюю статус-строку
 
 ### codex-watch.py
 

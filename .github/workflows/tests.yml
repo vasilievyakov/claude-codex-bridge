@@ -20,6 +20,7 @@ jobs:
           bash -n skills/second-opinion/scripts/second-opinion.sh
           bash -n skills/codex-worker/scripts/codex-worker.sh
           bash -n demo.sh
+          bash -n extras/install-statusline.sh extras/statusline-codex.sh
           python3 -m py_compile skills/second-opinion/scripts/progress.py extras/codex-watch.py
       - name: second-opinion tests (fake codex, no network)
         run: bash skills/second-opinion/tests/run.sh
@@ -29,3 +30,13 @@ jobs:
         run: |
           python3 extras/codex-watch.py --once
           printf '{"model":{"display_name":"CI"},"workspace":{"current_dir":"/w"},"context_window":{"context_window_size":200000,"current_usage":{"input_tokens":1000,"cache_read_input_tokens":50000,"output_tokens":200}}}' | bash extras/statusline-minimal.sh
+      - name: status line installer (temp HOME, existing status line kept, fake codex process)
+        run: |
+          export HOME="$(mktemp -d)"
+          mkdir -p "$HOME/.claude"
+          printf '{"statusLine":{"type":"command","command":"echo MYLINE"}}' > "$HOME/.claude/settings.json"
+          bash extras/install-statusline.sh
+          bash extras/install-statusline.sh --self-test | tee out.txt
+          grep -q 'MYLINE | codex:1' out.txt
+          bash extras/install-statusline.sh --uninstall
+          grep -q '"echo MYLINE"' "$HOME/.claude/settings.json"
