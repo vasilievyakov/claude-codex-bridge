@@ -111,6 +111,10 @@ ol.steps li::before{content:counter(s,decimal-leading-zero);position:absolute;le
 footer{margin-top:96px;padding-top:28px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:var(--bone-faint);font-size:14px}
 footer a{color:var(--bone-dim)}
 .tag{color:var(--coral)}
+.shot{margin:0;border:1px solid var(--line);border-radius:var(--r-xl);overflow:hidden;background:var(--ink-2)}
+.shot img{display:block;width:100%;height:auto}
+.shot figcaption{padding:14px 20px;color:var(--bone-faint);font-size:13px;border-top:1px solid var(--line)}
+.demo{margin-top:48px}
 @media (max-width:900px){.hero{grid-template-columns:minmax(0,1fr)}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.cards{grid-template-columns:minmax(0,1fr)}.two{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:640px){.row{grid-template-columns:minmax(0,1fr);gap:10px}.hero{padding-block:48px 40px}section{padding-top:72px}}
 @media (prefers-reduced-motion:no-preference){.btn,.pill,.copy{transition:border-color .15s,color .15s,background .15s}}
@@ -151,9 +155,14 @@ footer a{color:var(--bone-dim)}
 <div class="stats">
   <div><b>39 s</b><span>demo end to end: review, fix, patch shown</span></div>
   <div><b>2</b><span>Codex requests per demo run</span></div>
-  <div><b>312</b><span>tests on a fake codex, no network, no cost</span></div>
+  <div><b>378</b><span>tests on a fake codex, no network, no cost</span></div>
   <div><b>0</b><span>patches applied without your yes</span></div>
 </div>
+
+<figure class="shot demo">
+  <img src="media/demo.gif" alt="bash demo.sh: Codex finds a planted bug read-only, then a Codex worker fixes it in a separate worktree and returns a patch" width="1200" height="860" loading="lazy">
+  <figcaption>A real run of <code>bash demo.sh</code>, sped up 2.5 times: Codex reviews a file read-only and finds the planted bug, a Codex worker fixes it in its own worktree, the patch is shown and not applied.</figcaption>
+</figure>
 
 <section id="what">
   <div class="sec-head">
@@ -176,6 +185,31 @@ footer a{color:var(--bone-dim)}
       <h3>Nothing runs in the dark</h3>
       <p>Progress lines in the terminal while Codex works, a <code>codex:N</code> counter appended to your own status line (how many Codex agents run right now; installed by default), a live table in a second window.</p>
     </div>
+  </div>
+</section>
+
+<section id="statusline">
+  <div class="sec-head">
+    <span class="label">Status line</span>
+    <h2>How many Codex agents run, right where you look</h2>
+    <p class="lead">The installer adds one segment to the status line you already have: <code>| codex:2</code> while two Codex agents run, nothing when Codex is idle. Your status line stays as it is; only the segment is appended.</p>
+  </div>
+  <figure class="shot">
+    <img src="media/statusline.gif" alt="The status line shows codex:2, then codex:1, then nothing as two real Codex agents finish" width="1100" height="420" loading="lazy">
+    <figcaption>A status line that printed <code>Opus | ~/my-project | 41.2K</code> before installation, with two real Codex agents finishing one after the other.</figcaption>
+  </figure>
+  <div class="two" style="margin-top:24px">
+    <ul class="plain">
+      <li><code>install-statusline.sh</code> saves your current <code>statusLine.command</code>, points Claude Code at a small wrapper that runs your command unchanged and appends the Codex segment. <code>settings.json</code> is backed up first.</li>
+      <li>It counts every <code>codex exec</code> process: reviewers, workers, anything else, from npm, Homebrew or a downloaded binary. <code>codex:N+srv</code> when the plugin's app-server runs too.</li>
+      <li>No status line yet? You get a minimal one: <code>model | dir | tokens | codex:N</code>.</li>
+    </ul>
+    <pre><code><span class="c"># part of the install; safe to run again</span>
+bash extras/install-statusline.sh
+<span class="c"># fake codex exec process, no request: expects codex:1</span>
+bash extras/install-statusline.sh --self-test
+<span class="c"># put your old status line back</span>
+bash extras/install-statusline.sh --uninstall</code></pre>
   </div>
 </section>
 
@@ -208,7 +242,7 @@ footer a{color:var(--bone-dim)}
   </div>
   <ol class="steps">
     <li>Claude writes a task into a text file.</li>
-    <li>A script starts Codex in a sandbox: read-only for a review, write access to one separate copy for a worker.</li>
+    <li>A script starts Codex in a sandbox with the prompt on stdin: read-only for a review, write access to one separate copy and no network for a worker.</li>
     <li>Codex reads the code, may run the tests, and answers with a JSON file in a fixed format.</li>
     <li>The script checks the answer, saves it next to the log, and prints the paths.</li>
     <li>Claude opens every finding in the code and marks it real or not.</li>
@@ -266,11 +300,31 @@ footer a{color:var(--bone-dim)}
   </div>
   <ul class="plain">
     <li>The script prints <code>exit:</code> and <code>log:</code> paths. Read the log first.</li>
-    <li>Exit code 2: wrong arguments. 3: Codex answered outside the format, the raw answer is at the <code>json:</code> path. 4 (worker only): branch or worktree already exists, change the label or clean up. 124: time limit.</li>
-    <li><code>--dry-run</code> prints the exact Codex command and the prompt without running anything.</li>
+    <li>Exit code 2: wrong arguments. 3: Codex answered outside the format, the raw answer is at the <code>json:</code> path. 4 (worker only): branch or worktree already exists, change the label or clean up. 5 (review only): nothing to review, the diff is empty. 124: time limit. 130 and 143: interrupted, Codex was stopped too.</li>
+    <li>Codex fails on the very first request: check the model in <code>~/.codex/config.toml</code>; the account you logged in with has to support it.</li>
+    <li><code>--dry-run</code> prints the exact Codex command and the prompt file without running anything.</li>
     <li>Codex sees only what it is given: the task, the focus, the files to read, and the shared <code>~/.agents/AGENTS.md</code>. It does not read your <code>~/.claude/CLAUDE.md</code>; a project <code>CLAUDE.md</code> only when the project has no <code>AGENTS.md</code> (install step 5 turns this fallback on). If it "did not know" something, put it into the focus or the task.</li>
     <li>Tests without Codex and without cost: <code>bash skills/second-opinion/tests/run.sh</code> and <code>bash skills/codex-worker/tests/run.sh</code>.</li>
   </ul>
+</section>
+
+<section id="made">
+  <div class="sec-head">
+    <span class="label">How it was made</span>
+    <h2>Reviewed the way it reviews</h2>
+    <p class="lead">Built by a product person with Claude Code, then handed to a read-only review agent that went through it as a newcomer would. Five defects would have broken it for other people; fifteen more were smaller. Every finding was checked against the code or reproduced before anything changed, and the real Codex runs caught what tests cannot.</p>
+  </div>
+  <ul class="plain">
+    <li>Ctrl-C stopped the script but not Codex: GNU <code>timeout</code> moves into its own process group, so Codex kept spending quota. Both scripts now stop it and record <code>interrupted</code>.</li>
+    <li>The install text used <code>$BRIDGE</code> and never set it, and <code>ln -s</code> does not check its target: the skills were silently linked to nowhere. Now every block sets it and the links are verified.</li>
+    <li>"Append this line to config.toml" is wrong for TOML: the line lands inside the last table. It is inserted above the first table now.</li>
+    <li>The prompt went to Codex as one argument, visible in <code>ps</code> and capped at 128 KiB on Linux. It goes through stdin now.</li>
+    <li>A review of an empty diff still spent a request. Exit code 5 now, before Codex is called.</li>
+    <li>The real demo showed <code>__pycache__/*.pyc</code> in the worker's patch, and a model in the local config that the account could not use. Neither would show up in a test.</li>
+  </ul>
+  <div class="ctas" style="margin-top:28px">
+    <a class="btn" href="https://github.com/vasilievyakov/claude-codex-bridge#how-it-was-made">The full story in the README</a>
+  </div>
 </section>
 
 <section id="install">
@@ -283,6 +337,7 @@ footer a{color:var(--bone-dim)}
       <span class="label">Recommended</span>
       <h3>Give the text to your agent</h3>
       <p>Open Claude Code on your machine and paste the line from the top of this page. The agent installs everything and reports what it changed. It never overwrites your files.</p>
+      <p>The status line signal is part of it: the agent runs <code>install-statusline.sh</code> and its self-test.</p>
       <p>Check: open a new Claude Code session and type <code>/second-opinion</code>.</p>
     </div>
     <div class="card">
@@ -294,11 +349,12 @@ cd claude-codex-bridge
 bash demo.sh</code></pre>
     </div>
     <div class="card">
-      <span class="label">One command</span>
+      <span class="label">Skills only</span>
       <h3>skills CLI</h3>
-      <p>The two skills sit in the Agent Skills layout, so the skills CLI installs them into every agent it detects.</p>
-      <pre><code>npx skills add vasilievyakov/claude-codex-bridge</code></pre>
-      <p>You need Claude Code, Codex CLI 0.150 or newer with a login, git and python3. macOS or Linux.</p>
+      <p>The two skills sit in the Agent Skills layout, so the skills CLI can install them. It installs the skills only: add the status line from a clone, and remove any copies it put into Codex (the skills are for Claude Code).</p>
+      <pre><code>npx skills add vasilievyakov/claude-codex-bridge
+bash extras/install-statusline.sh</code></pre>
+      <p>You need Claude Code, Codex CLI 0.150 or newer (tested with 0.156) with a login, git and python3. macOS or Linux.</p>
     </div>
   </div>
 </section>
@@ -331,9 +387,14 @@ bash demo.sh</code></pre>
 <div class="stats">
   <div><b>39 с</b><span>демо целиком: ревью, исправление, патч показан</span></div>
   <div><b>2</b><span>запроса к Codex на один прогон демо</span></div>
-  <div><b>312</b><span>тестов на фальшивом codex, без сети и затрат</span></div>
+  <div><b>378</b><span>тестов на фальшивом codex, без сети и затрат</span></div>
   <div><b>0</b><span>патчей, примененных без твоего да</span></div>
 </div>
+
+<figure class="shot demo">
+  <img src="media/demo.gif" alt="bash demo.sh: Codex находит подложенный баг в режиме только чтения, затем воркер Codex исправляет его в отдельном worktree и возвращает патч" width="1200" height="860" loading="lazy">
+  <figcaption>Настоящий прогон <code>bash demo.sh</code>, ускорен в 2,5 раза: Codex ревьюит файл только на чтение и находит подложенный баг, воркер Codex исправляет его в своем worktree, патч показан и не применен.</figcaption>
+</figure>
 
 <section id="what-ru">
   <div class="sec-head">
@@ -356,6 +417,31 @@ bash demo.sh</code></pre>
       <h3>Ничего не работает втемную</h3>
       <p>Строки хода в терминале, пока Codex работает, счетчик <code>codex:N</code> в конце твоей статус-строки (сколько агентов Codex работает прямо сейчас; ставится при установке), живая таблица во втором окне.</p>
     </div>
+  </div>
+</section>
+
+<section id="statusline-ru">
+  <div class="sec-head">
+    <span class="label">Статус-строка</span>
+    <h2>Сколько агентов Codex работает, там, куда ты и так смотришь</h2>
+    <p class="lead">Установщик добавляет один сегмент к статус-строке, которая у тебя уже есть: <code>| codex:2</code>, пока работают два агента Codex, и ничего, когда Codex простаивает. Твоя статус-строка остается как есть, дописывается только сегмент.</p>
+  </div>
+  <figure class="shot">
+    <img src="media/statusline.gif" alt="Статус-строка показывает codex:2, потом codex:1, потом ничего, по мере того как два настоящих агента Codex заканчивают работу" width="1100" height="420" loading="lazy">
+    <figcaption>Статус-строка, которая до установки печатала <code>Opus | ~/my-project | 41.2K</code>, пока два настоящих агента Codex заканчивают один за другим.</figcaption>
+  </figure>
+  <div class="two" style="margin-top:24px">
+    <ul class="plain">
+      <li><code>install-statusline.sh</code> сохраняет твой текущий <code>statusLine.command</code> и направляет Claude Code на маленькую обертку, которая запускает твою команду без изменений и дописывает сегмент Codex. Перед правкой делается бэкап <code>settings.json</code>.</li>
+      <li>Считается каждый процесс <code>codex exec</code>: ревьюеры, воркеры и все остальное, из npm, Homebrew или скачанного бинарника. <code>codex:N+srv</code>, если работает еще и app-server плагина.</li>
+      <li>Статус-строки еще нет? Ставится минимальная: <code>модель | папка | токены | codex:N</code>.</li>
+    </ul>
+    <pre><code><span class="c"># часть установки; повторный запуск безопасен</span>
+bash extras/install-statusline.sh
+<span class="c"># поддельный процесс codex exec, без запроса: ждет codex:1</span>
+bash extras/install-statusline.sh --self-test
+<span class="c"># вернуть прежнюю статус-строку</span>
+bash extras/install-statusline.sh --uninstall</code></pre>
   </div>
 </section>
 
@@ -388,7 +474,7 @@ bash demo.sh</code></pre>
   </div>
   <ol class="steps">
     <li>Claude пишет задачу в текстовый файл.</li>
-    <li>Скрипт запускает Codex в песочнице: только чтение для ревью, запись в одну отдельную копию для воркера.</li>
+    <li>Скрипт запускает Codex в песочнице и подает промпт через stdin: только чтение для ревью, запись в одну отдельную копию и без сети для воркера.</li>
     <li>Codex читает код, может прогнать тесты и отвечает JSON-файлом в фиксированном формате.</li>
     <li>Скрипт проверяет ответ, кладет его рядом с журналом и печатает пути.</li>
     <li>Claude открывает каждую находку в коде и отмечает, настоящая она или нет.</li>
@@ -446,11 +532,31 @@ bash demo.sh</code></pre>
   </div>
   <ul class="plain">
     <li>Скрипт печатает пути <code>exit:</code> и <code>log:</code>. Сначала читай журнал.</li>
-    <li>Код выхода 2: неверные аргументы. 3: Codex ответил не по формату, сырой ответ лежит по пути <code>json:</code>. 4 (только воркер): ветка или worktree уже есть, смени метку или прибери. 124: лимит времени.</li>
-    <li><code>--dry-run</code> печатает точную команду Codex и промпт, ничего не запуская.</li>
+    <li>Код выхода 2: неверные аргументы. 3: Codex ответил не по формату, сырой ответ лежит по пути <code>json:</code>. 4 (только воркер): ветка или worktree уже есть, смени метку или прибери. 5 (только ревью): ревьюить нечего, дифф пустой. 124: лимит времени. 130 и 143: прерывание, Codex тоже остановлен.</li>
+    <li>Codex падает на самом первом запросе: проверь модель в <code>~/.codex/config.toml</code>; аккаунт, под которым выполнен вход, должен ее поддерживать.</li>
+    <li><code>--dry-run</code> печатает точную команду Codex и файл промпта, ничего не запуская.</li>
     <li>Codex видит только то, что ему дали: задачу, фокус, файлы для чтения и общий <code>~/.agents/AGENTS.md</code>. Твой <code>~/.claude/CLAUDE.md</code> он не читает; проектный <code>CLAUDE.md</code> читает, только если в проекте нет <code>AGENTS.md</code> (этот запасной вариант включает шаг 5 установки). Если он чего-то «не знал», положи это в фокус или в задачу.</li>
     <li>Тесты без Codex и без затрат: <code>bash skills/second-opinion/tests/run.sh</code> и <code>bash skills/codex-worker/tests/run.sh</code>.</li>
   </ul>
+</section>
+
+<section id="made-ru">
+  <div class="sec-head">
+    <span class="label">Как это сделано</span>
+    <h2>Проверено тем же способом, каким проверяет</h2>
+    <p class="lead">Собрано продуктовым человеком вместе с Claude Code, потом отдано агенту-ревьюеру только на чтение, который прошел репозиторий глазами новичка. Пять дефектов сломали бы связку у других людей, еще пятнадцать были помельче. Каждую находку сверили с кодом или воспроизвели до любых правок, а настоящие прогоны Codex поймали то, чего не ловят тесты.</p>
+  </div>
+  <ul class="plain">
+    <li>Ctrl-C останавливал скрипт, но не Codex: GNU <code>timeout</code> уходит в свою группу процессов, и Codex продолжал тратить квоту. Теперь оба скрипта его останавливают и записывают <code>interrupted</code>.</li>
+    <li>Текст установки пользовался <code>$BRIDGE</code>, но не присваивал его, а <code>ln -s</code> не проверяет цель: скиллы молча линковались в никуда. Теперь каждый блок присваивает путь, а ссылки проверяются.</li>
+    <li>«Допиши строку в config.toml» для TOML неверно: строка попадает внутрь последней таблицы. Теперь она вставляется над первой таблицей.</li>
+    <li>Промпт уходил в Codex одним аргументом, виден в <code>ps</code> и на Linux ограничен 128 КиБ. Теперь он идет через stdin.</li>
+    <li>Ревью пустого диффа все равно тратило запрос. Теперь код выхода 5, до вызова Codex.</li>
+    <li>Настоящее демо показало <code>__pycache__/*.pyc</code> в патче воркера и модель в локальном конфиге, недоступную аккаунту. Ни то ни другое тест бы не поймал.</li>
+  </ul>
+  <div class="ctas" style="margin-top:28px">
+    <a class="btn" href="https://github.com/vasilievyakov/claude-codex-bridge/blob/main/README.ru.md#как-это-сделано">Вся история в README</a>
+  </div>
 </section>
 
 <section id="install-ru">
@@ -463,6 +569,7 @@ bash demo.sh</code></pre>
       <span class="label">Рекомендуем</span>
       <h3>Отдай текст своему агенту</h3>
       <p>Открой Claude Code на своей машине и вставь строку с верха этой страницы. Агент ставит все сам и отчитывается, что изменил. Твои файлы он никогда не перезаписывает.</p>
+      <p>Сигнал в статус-строке входит в установку: агент запускает <code>install-statusline.sh</code> и его самопроверку.</p>
       <p>Проверка: открой новую сессию Claude Code и набери <code>/second-opinion</code>.</p>
     </div>
     <div class="card">
@@ -474,11 +581,12 @@ cd claude-codex-bridge
 bash demo.sh</code></pre>
     </div>
     <div class="card">
-      <span class="label">Одна команда</span>
+      <span class="label">Только скиллы</span>
       <h3>skills CLI</h3>
-      <p>Два скилла лежат в раскладке Agent Skills, поэтому skills CLI ставит их во все агенты, которые найдет.</p>
-      <pre><code>npx skills add vasilievyakov/claude-codex-bridge</code></pre>
-      <p>Нужны Claude Code, Codex CLI 0.150 или новее с выполненным входом, git и python3. macOS или Linux.</p>
+      <p>Два скилла лежат в раскладке Agent Skills, поэтому их умеет ставить skills CLI. Он ставит только скиллы: статус-строку добавь из клона, а копии, которые он положил в Codex, убери (скиллы нужны Claude Code).</p>
+      <pre><code>npx skills add vasilievyakov/claude-codex-bridge
+bash extras/install-statusline.sh</code></pre>
+      <p>Нужны Claude Code, Codex CLI 0.150 или новее (проверено на 0.156) с выполненным входом, git и python3. macOS или Linux.</p>
     </div>
   </div>
 </section>
