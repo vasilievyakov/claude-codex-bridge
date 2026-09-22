@@ -14,6 +14,11 @@
 #      ~/.claude/statusline/base-command
 #   3. backs up ~/.claude/settings.json to settings.json.bak-<timestamp> and
 #      points statusLine.command at statusline-codex.sh; other keys are kept
+#   4. sets statusLine.refreshInterval to 2 seconds unless one is already set:
+#      without it Claude Code re-runs the status line only on events (a new
+#      assistant message, /compact, ...), so the counter would freeze while the
+#      session sits idle waiting for Codex. CODEX_STATUSLINE_REFRESH overrides
+#      the value; --uninstall removes it only if this script added it.
 # Running it again is safe: a second run changes nothing in settings.json.
 # Honors CLAUDE_CONFIG_DIR when set.
 #
@@ -29,6 +34,8 @@ CONF="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 DEST="$CONF/statusline"
 SETTINGS="$CONF/settings.json"
 TARGET="bash \"$DEST/statusline-codex.sh\""
+REFRESH="${CODEX_STATUSLINE_REFRESH:-2}"
+case "$REFRESH" in ""|*[!0-9]*|0) printf 'install-statusline: CODEX_STATUSLINE_REFRESH must be a whole number of seconds, 1 or more\n' >&2; exit 2 ;; esac
 SAMPLE='{"model":{"display_name":"Claude"},"workspace":{"current_dir":"/tmp"},"context_window":{"context_window_size":200000,"current_usage":{"input_tokens":1000,"cache_read_input_tokens":50000,"output_tokens":200}}}'
 
 say() { printf 'install-statusline: %s\n' "$*"; }
@@ -49,10 +56,14 @@ backup_settings() {
 
 # settings_py <mode>: read/modify statusLine in settings.json.
 #   get     print the current statusLine.command (empty if none)
-#   set     set statusLine.command to $TARGET, keep other statusLine keys
-#   restore set statusLine.command to $BASE_CMD, or drop statusLine if empty
+#   set     set statusLine.command to $TARGET, keep other statusLine keys;
+#           add refreshInterval=$REFRESH when absent and touch $DEST/refresh-added
+#   refresh only the refreshInterval part of `set` (settings already wired)
+#   restore set statusLine.command to $BASE_CMD, or drop statusLine if empty;
+#           drop refreshInterval if $DEST/refresh-added exists
 settings_py() {
-    MODE="$1" SETTINGS="$SETTINGS" TARGET="$TARGET" BASE_CMD="${BASE_CMD:-}" python3 - <<'PY'
+    MODE="$1" SETTINGS="$SETTINGS" TARGET="$TARGET" BASE_CMD="${BASE_CMD:-}" \
+        REFRESH="$REFRESH" MARK="$DEST/refresh-added" python3 - <<'PY'
 import json, os, sys
 
 mode, path = os.environ["MODE"], os.environ["SETTINGS"]
@@ -72,11 +83,26 @@ if mode == "get":
     cmd = sl.get("command")
     print(cmd if isinstance(cmd, str) else "", end="")
     sys.exit(0)
-if mode == "set":
-    sl["type"] = "command"
-    sl["command"] = os.environ["TARGET"]
+if mode == "refresh-check":
+    print("present" if "refreshInterval" in sl else "missing", end="")
+    sys.exit(0)
+mark = os.environ["MARK"]
+if mode in ("set", "refresh"):
+    if mode == "set":
+        sl["type"] = "command"
+        sl["command"] = os.environ["TARGET"]
+    if "refreshInterval" not in sl:
+        sl["refreshInterval"] = int(os.environ["REFRESH"])
+        open(mark, "w").close()
+        print("install-statusline: statusLine.refreshInterval -> %s s (the counter "
+              "updates while the session is idle)" % os.environ["REFRESH"])
+    elif mode == "refresh":
+        sys.exit(0)
     data["statusLine"] = sl
 elif mode == "restore":
+    if os.path.exists(mark):
+        sl.pop("refreshInterval", None)
+        os.remove(mark)
     base = os.environ["BASE_CMD"]
     if base:
         sl["type"] = "command"
@@ -107,7 +133,12 @@ install() {
     local cur
     cur="$(settings_py get)"
     if [ "$cur" = "$TARGET" ]; then
-        say "status line already wired; settings.json unchanged"
+        if [ "$(settings_py refresh-check)" = "missing" ]; then
+            backup_settings
+            settings_py refresh
+        else
+            say "status line already wired; settings.json unchanged"
+        fi
     else
         if [ -n "$cur" ]; then
             printf '%s\n' "$cur" > "$DEST/base-command"
@@ -165,6 +196,6 @@ case "${1:-}" in
     "") install ;;
     --self-test) self_test ;;
     --uninstall) uninstall ;;
-    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//' ;;
+    -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown argument: $1" ;;
 esac

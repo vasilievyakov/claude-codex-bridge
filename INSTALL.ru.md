@@ -17,7 +17,7 @@ git --version
 python3 --version
 ```
 
-На чистом Mac `git` и `python3` остаются заглушками, пока не установлены Xcode Command Line Tools: если `git --version` открывает окно установки или падает, запусти `xcode-select --install` и дождись конца установки. Если `codex` нет: `npm i -g @openai/codex` (Node 18+) или `brew install codex`. Затем `codex login`, если `codex login status` говорит, что вход не выполнен. Если нет `timeout` (чистый macOS), предложи `brew install coreutils`; скрипты работают и без него, но тогда без лимита времени.
+На чистом Mac `git` и `python3` остаются заглушками, пока не установлены Xcode Command Line Tools: если `git --version` открывает окно установки или падает, запусти `xcode-select --install` и дождись конца установки. Аккаунты: Claude Code нужен Pro, Max, Team, Enterprise или Console; Codex нужен план ChatGPT, в который входит Codex, или API-ключ OpenAI (`codex login --with-api-key`). Если доступа к OpenAI у пользователя нет, остановись и скажи об этом: без него связка не работает. На обычном Windows (не WSL) тоже остановись: скриптам нужны bash и `pgrep`; WSL 2 должен работать как Linux, но не проверялся, так и скажи. Если `codex` нет: `npm i -g @openai/codex` (Node 18+) или `brew install codex`. Затем `codex login`, если `codex login status` говорит, что вход не выполнен. Если нет `timeout` (чистый macOS), предложи `brew install coreutils`; скрипты работают и без него, но тогда без лимита времени.
 
 ## 2. Получи репозиторий
 
@@ -78,7 +78,7 @@ bash "$BRIDGE/extras/install-statusline.sh"
 bash "$BRIDGE/extras/install-statusline.sh" --self-test
 ```
 
-Установщик оставляет текущую статус-строку пользователя ровно такой, как есть: сохраняет ее команду, оборачивает и дописывает к выводу только сегмент Codex. Если статус-строки нет, ставит минимальную (`модель | папка | токены | codex:N`). Сначала делает бэкап `~/.claude/settings.json` и меняет в нем только `statusLine.command`. Повторный запуск безопасен. `--self-test` запускает поддельный процесс `codex exec` (без запроса к Codex) и должен напечатать `self-test passed`. Если статус-строка пользователя уже печатает `codex:`, сегмент второй раз не добавляется. Откат: `bash "$BRIDGE/extras/install-statusline.sh" --uninstall`.
+Установщик оставляет текущую статус-строку пользователя ровно такой, как есть: сохраняет ее команду, оборачивает и дописывает к выводу только сегмент Codex. Если статус-строки нет, ставит минимальную (`модель | папка | токены | codex:N`). Сначала делает бэкап `~/.claude/settings.json` и меняет в нем только `statusLine.command`, а еще `statusLine.refreshInterval` (2 секунды), если у пользователя его нет: без него счетчик застывает, пока сессия ждет Codex. Повторный запуск безопасен. `--self-test` запускает поддельный процесс `codex exec` (без запроса к Codex) и должен напечатать `self-test passed`. Если статус-строка пользователя уже печатает `codex:`, сегмент второй раз не добавляется. Откат: `bash "$BRIDGE/extras/install-statusline.sh" --uninstall`.
 
 ## 7. Необязательно: официальный плагин Codex для Claude Code
 

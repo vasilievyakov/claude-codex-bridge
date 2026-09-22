@@ -38,5 +38,7 @@ jobs:
           bash extras/install-statusline.sh
           bash extras/install-statusline.sh --self-test | tee out.txt
           grep -q 'MYLINE | codex:1' out.txt
+          grep -q '"refreshInterval": 2' "$HOME/.claude/settings.json"
           bash extras/install-statusline.sh --uninstall
           grep -q '"echo MYLINE"' "$HOME/.claude/settings.json"
+          ! grep -q refreshInterval "$HOME/.claude/settings.json"

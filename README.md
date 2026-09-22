@@ -6,6 +6,8 @@
 
 claude-codex-bridge gives Claude Code a second AI: OpenAI Codex CLI, for two jobs. It looks at your code with fresh eyes, and it does a side task while you keep working. Codex runs in a sandbox and answers with files; Claude reads them, checks every claim against the code and shows you the result. Nothing in your project changes until you say yes. Your status line shows how many Codex agents are running right now. Two skills, a status line segment, bash and python3, no daemons, no services, 378 tests with a fake `codex`.
 
+**What you need.** Two paid accounts. Claude: Pro, Max, Team, Enterprise or a Console API account; the free claude.ai plan does not include Claude Code. OpenAI, for Codex: a ChatGPT plan that includes Codex, or an OpenAI API key billed per use (`codex login --with-api-key`). Every review and every worker run spends Codex quota or API money. macOS or Linux. Windows is not supported yet: the scripts need bash, `pgrep` and POSIX paths. Under WSL 2 it should behave as on Linux, but that is untested.
+
 It was built by a product person working with Claude Code, and then taken apart and fixed by the same kind of review it offers: agents reviewed it, real Codex runs broke it, the human decided what counts. The paper trail is in the repository and in [How it was made](#how-it-was-made).
 
 ![bash demo.sh: Codex finds a planted bug read-only, then a Codex worker fixes it in a separate worktree and returns a patch](docs/media/demo.gif)
@@ -33,7 +35,7 @@ Install claude-codex-bridge: read https://raw.githubusercontent.com/vasilievyako
 
 What it does, in ten steps: checks versions, clones this repository, links the two skills into `~/.claude/skills`, sets up one instructions file that both agents read (`~/.agents/AGENTS.md`), installs the status line signal and runs its self-test, optionally adds the official Codex plugin and the live table, runs the tests, reports.
 
-You need Claude Code, [Codex CLI](https://github.com/openai/codex) 0.150 or newer (tested with 0.156) with a login, git and python3. macOS or Linux.
+You need Claude Code, [Codex CLI](https://github.com/openai/codex) 0.150 or newer (tested with 0.156) with a login, git and python3, on macOS or Linux; accounts as described at the top.
 
 Check it works: open a new Claude Code session and type `/second-opinion`. Or run the demo, about a minute, two Codex requests:
 
@@ -64,7 +66,7 @@ The installer adds one segment to the status line you already have. Here it is o
 
 ![The status line shows codex:2, then codex:1, then nothing as two real Codex agents finish](docs/media/statusline.gif)
 
-How it works: `install-statusline.sh` saves your current `statusLine.command` to `~/.claude/statusline/base-command` and points Claude Code at `statusline-codex.sh`, which runs your command unchanged and appends ` | codex:N` while N `codex exec` processes are alive (`codex:N+srv` when the plugin's app-server runs too). Detection is `pgrep` on the process name, so it counts reviewers, workers and anything else started as `codex exec`, from npm, Homebrew or a downloaded binary. `--self-test` starts a fake `codex exec` process (no request to Codex) and expects `codex:1`; `--uninstall` puts your old command back.
+How it works: `install-statusline.sh` saves your current `statusLine.command` to `~/.claude/statusline/base-command` and points Claude Code at `statusline-codex.sh`, which runs your command unchanged and appends ` | codex:N` while N `codex exec` processes are alive (`codex:N+srv` when the plugin's app-server runs too). Detection is `pgrep` on the process name, so it counts reviewers, workers and anything else started as `codex exec`, from npm, Homebrew or a downloaded binary. It also sets `statusLine.refreshInterval` to 2 seconds unless you have your own: without it Claude Code re-runs the status line only on events such as a new message, so the counter would freeze while the session waits for Codex. `--self-test` starts a fake `codex exec` process (no request to Codex) and expects `codex:1`; `--uninstall` puts your old command back.
 
 For a bigger picture, run `python3 extras/codex-watch.py` in a second terminal: a top-style table of running Codex processes and the newest results.
 
@@ -147,6 +149,8 @@ A read-only review subagent then went through the repository as a newcomer would
 - A review of an empty diff still spent a request. It now exits with code 5 before calling Codex.
 - The real demo showed what the tests did not: the worker's patch carried binary `__pycache__/*.pyc` files: the throwaway repository had no `.gitignore`, and the worker ran the tests. The worker respects `.gitignore`, so the demo got one.
 - The real demo also failed on the first request for a reason no test can catch: the model named in the local Codex config was not available to the account. The progress lines showed the error within four seconds, which is the argument for having them.
+
+- The status line counter worked in every test and still froze in a real Claude Code session. Claude Code re-runs the status line on events, and a session waiting for Codex produces none. A control run in a real session: 13 seconds of Codex, zero status line runs. With `refreshInterval` set to 2 seconds, `codex:1` appeared 1.1 seconds after Codex started.
 
 The status line was tested the same way: a fake `codex exec` process (`exec -a codex perl exec`, no request, no cost) for the self-test and CI, then two real Codex agents for the proof in the GIF above.
 

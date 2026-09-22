@@ -6,7 +6,7 @@ Every user's status line and instruction files are different, so wiring these in
 
 ## install-statusline.sh (required step of the install)
 
-Adds the Codex signal to the Claude Code status line: ` | codex:N` while N Codex agents run, nothing when Codex is idle. The user's own status line is not edited or copied: its command is saved to `~/.claude/statusline/base-command`, `statusLine.command` in `~/.claude/settings.json` is pointed at `statusline-codex.sh`, which runs the saved command and appends only the segment. With no status line, `statusline-minimal.sh` is used. `settings.json` is backed up first; a second run changes nothing.
+Adds the Codex signal to the Claude Code status line: ` | codex:N` while N Codex agents run, nothing when Codex is idle. The user's own status line is not edited or copied: its command is saved to `~/.claude/statusline/base-command`, `statusLine.command` in `~/.claude/settings.json` is pointed at `statusline-codex.sh`, which runs the saved command and appends only the segment. With no status line, `statusline-minimal.sh` is used. It also sets `statusLine.refreshInterval` to 2 seconds when none is set (override with `CODEX_STATUSLINE_REFRESH`): Claude Code otherwise re-runs the status line only on events, and the counter would freeze while the session waits for Codex. `settings.json` is backed up first; a second run changes nothing.
 
     bash extras/install-statusline.sh              # install
     bash extras/install-statusline.sh --self-test  # fake `codex exec` process, expects codex:1
@@ -68,7 +68,7 @@ Give this to your agent:
 
 ### install-statusline.sh (обязательный шаг установки)
 
-Добавляет сигнал Codex в статус-строку Claude Code: ` | codex:N`, пока работают N агентов Codex, и ничего, когда Codex простаивает. Статус-строка пользователя не правится и не копируется: ее команда сохраняется в `~/.claude/statusline/base-command`, `statusLine.command` в `~/.claude/settings.json` указывает на `statusline-codex.sh`, который запускает сохраненную команду и дописывает только сегмент. Если статус-строки нет, используется `statusline-minimal.sh`. Перед правкой делается бэкап `settings.json`; повторный запуск ничего не меняет.
+Добавляет сигнал Codex в статус-строку Claude Code: ` | codex:N`, пока работают N агентов Codex, и ничего, когда Codex простаивает. Статус-строка пользователя не правится и не копируется: ее команда сохраняется в `~/.claude/statusline/base-command`, `statusLine.command` в `~/.claude/settings.json` указывает на `statusline-codex.sh`, который запускает сохраненную команду и дописывает только сегмент. Если статус-строки нет, используется `statusline-minimal.sh`. Еще он выставляет `statusLine.refreshInterval` в 2 секунды, если значения нет (переопределяется через `CODEX_STATUSLINE_REFRESH`): иначе Claude Code перезапускает статус-строку только по событиям, и счетчик застывал бы, пока сессия ждет Codex. Перед правкой делается бэкап `settings.json`; повторный запуск ничего не меняет.
 
     bash extras/install-statusline.sh              # установить
     bash extras/install-statusline.sh --self-test  # поддельный процесс `codex exec`, ожидается codex:1

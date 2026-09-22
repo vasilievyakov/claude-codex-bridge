@@ -144,6 +144,7 @@ footer a{color:var(--bone-dim)}
       <a class="btn primary" href="#install">Give it to your agent</a>
       <a class="btn" href="#use">How to use it</a>
     </div>
+    <p style="color:var(--bone-faint);font-size:14px;max-width:62ch"><strong style="color:var(--bone)">What you need:</strong> two paid accounts. Claude Pro, Max, Team, Enterprise or Console (the free plan has no Claude Code), and OpenAI for Codex: a ChatGPT plan that includes Codex or an API key. macOS or Linux; Windows is not supported yet.</p>
   </div>
   <div class="paste">
     <header><span class="label">Paste into Claude Code</span><button class="copy" data-copy="paste-en">Copy</button></header>
@@ -202,6 +203,7 @@ footer a{color:var(--bone-dim)}
     <ul class="plain">
       <li><code>install-statusline.sh</code> saves your current <code>statusLine.command</code>, points Claude Code at a small wrapper that runs your command unchanged and appends the Codex segment. <code>settings.json</code> is backed up first.</li>
       <li>It counts every <code>codex exec</code> process: reviewers, workers, anything else, from npm, Homebrew or a downloaded binary. <code>codex:N+srv</code> when the plugin's app-server runs too.</li>
+      <li>It sets <code>refreshInterval</code> to 2 seconds unless you have your own. Claude Code re-runs the status line on events, and a session waiting for Codex has none: without the timer the counter never showed up in a real session, with it <code>codex:1</code> appeared in 1.1 seconds.</li>
       <li>No status line yet? You get a minimal one: <code>model | dir | tokens | codex:N</code>.</li>
     </ul>
     <pre><code><span class="c"># part of the install; safe to run again</span>
@@ -354,7 +356,7 @@ bash demo.sh</code></pre>
       <p>The two skills sit in the Agent Skills layout, so the skills CLI can install them. It installs the skills only: add the status line from a clone, and remove any copies it put into Codex (the skills are for Claude Code).</p>
       <pre><code>npx skills add vasilievyakov/claude-codex-bridge
 bash extras/install-statusline.sh</code></pre>
-      <p>You need Claude Code, Codex CLI 0.150 or newer (tested with 0.156) with a login, git and python3. macOS or Linux.</p>
+      <p>You need Claude Code, Codex CLI 0.150 or newer (tested with 0.156) with a login, git and python3. Two paid accounts: Claude (Pro or higher, or Console) and OpenAI (a ChatGPT plan with Codex, or an API key). macOS or Linux; Windows is not supported yet, WSL 2 is untested.</p>
     </div>
   </div>
 </section>
@@ -376,6 +378,7 @@ bash extras/install-statusline.sh</code></pre>
       <a class="btn primary" href="#install-ru">Отдай своему агенту</a>
       <a class="btn" href="#use-ru">Как пользоваться</a>
     </div>
+    <p style="color:var(--bone-faint);font-size:14px;max-width:62ch"><strong style="color:var(--bone)">Что нужно:</strong> два платных аккаунта. Claude Pro, Max, Team, Enterprise или Console (в бесплатном плане нет Claude Code) и OpenAI для Codex: план ChatGPT, в который входит Codex, или API-ключ. macOS или Linux; Windows пока не поддерживается.</p>
   </div>
   <div class="paste">
     <header><span class="label">Вставь в Claude Code</span><button class="copy" data-copy="paste-ru">Копировать</button></header>
@@ -434,6 +437,7 @@ bash extras/install-statusline.sh</code></pre>
     <ul class="plain">
       <li><code>install-statusline.sh</code> сохраняет твой текущий <code>statusLine.command</code> и направляет Claude Code на маленькую обертку, которая запускает твою команду без изменений и дописывает сегмент Codex. Перед правкой делается бэкап <code>settings.json</code>.</li>
       <li>Считается каждый процесс <code>codex exec</code>: ревьюеры, воркеры и все остальное, из npm, Homebrew или скачанного бинарника. <code>codex:N+srv</code>, если работает еще и app-server плагина.</li>
+      <li>Выставляет <code>refreshInterval</code> в 2 секунды, если у тебя нет своего. Claude Code перезапускает статус-строку по событиям, а у сессии, которая ждет Codex, их нет: без таймера счетчик в настоящей сессии так и не появился, с ним <code>codex:1</code> появился через 1,1 секунды.</li>
       <li>Статус-строки еще нет? Ставится минимальная: <code>модель | папка | токены | codex:N</code>.</li>
     </ul>
     <pre><code><span class="c"># часть установки; повторный запуск безопасен</span>
@@ -586,7 +590,7 @@ bash demo.sh</code></pre>
       <p>Два скилла лежат в раскладке Agent Skills, поэтому их умеет ставить skills CLI. Он ставит только скиллы: статус-строку добавь из клона, а копии, которые он положил в Codex, убери (скиллы нужны Claude Code).</p>
       <pre><code>npx skills add vasilievyakov/claude-codex-bridge
 bash extras/install-statusline.sh</code></pre>
-      <p>Нужны Claude Code, Codex CLI 0.150 или новее (проверено на 0.156) с выполненным входом, git и python3. macOS или Linux.</p>
+      <p>Нужны Claude Code, Codex CLI 0.150 или новее (проверено на 0.156) с выполненным входом, git и python3. Два платных аккаунта: Claude (Pro и выше или Console) и OpenAI (план ChatGPT с Codex или API-ключ). macOS или Linux; Windows пока не поддерживается, WSL 2 не проверялся.</p>
     </div>
   </div>
 </section>

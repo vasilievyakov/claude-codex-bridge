@@ -17,7 +17,7 @@ git --version
 python3 --version
 ```
 
-On a fresh Mac, `git` and `python3` are stubs until the Xcode Command Line Tools are installed: if `git --version` opens an install dialog or fails, run `xcode-select --install` and wait for it to finish. If `codex` is missing: `npm i -g @openai/codex` (Node 18+) or `brew install codex`. Then `codex login` if `codex login status` says logged out. If `timeout` is missing (stock macOS), suggest `brew install coreutils`; the scripts run without it but then have no time limit.
+On a fresh Mac, `git` and `python3` are stubs until the Xcode Command Line Tools are installed: if `git --version` opens an install dialog or fails, run `xcode-select --install` and wait for it to finish. Accounts: Claude Code needs a Pro, Max, Team, Enterprise or Console account; Codex needs a ChatGPT plan that includes Codex or an OpenAI API key (`codex login --with-api-key`). If the user has no OpenAI access, stop and say so: the bridge cannot work without it. On native Windows (not WSL) stop too: the scripts need bash and `pgrep`; WSL 2 should work as Linux but is untested, say so. If `codex` is missing: `npm i -g @openai/codex` (Node 18+) or `brew install codex`. Then `codex login` if `codex login status` says logged out. If `timeout` is missing (stock macOS), suggest `brew install coreutils`; the scripts run without it but then have no time limit.
 
 ## 2. Get the repository
 
@@ -78,7 +78,7 @@ bash "$BRIDGE/extras/install-statusline.sh"
 bash "$BRIDGE/extras/install-statusline.sh" --self-test
 ```
 
-The installer keeps the user's current status line exactly as it is: it saves its command, wraps it and appends only the Codex segment to its output. With no status line it installs a minimal one (`model | dir | tokens | codex:N`). It backs up `~/.claude/settings.json` first and changes only `statusLine.command`. Running it twice is safe. `--self-test` starts a fake `codex exec` process (no request to Codex) and must print `self-test passed`. If the user's status line already prints `codex:`, the segment is not added twice. Undo: `bash "$BRIDGE/extras/install-statusline.sh" --uninstall`.
+The installer keeps the user's current status line exactly as it is: it saves its command, wraps it and appends only the Codex segment to its output. With no status line it installs a minimal one (`model | dir | tokens | codex:N`). It backs up `~/.claude/settings.json` first and changes only `statusLine.command`, plus `statusLine.refreshInterval` (2 seconds) when the user has none: without it the counter freezes while the session waits for Codex. Running it twice is safe. `--self-test` starts a fake `codex exec` process (no request to Codex) and must print `self-test passed`. If the user's status line already prints `codex:`, the segment is not added twice. Undo: `bash "$BRIDGE/extras/install-statusline.sh" --uninstall`.
 
 ## 7. Optional: the official Codex plugin for Claude Code
 
