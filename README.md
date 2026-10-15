@@ -156,9 +156,9 @@ The status line was tested the same way: a fake `codex exec` process (`exec -a c
 
 **What to take from it.** Handing a tool over is work of its own: most defects were in the install text. A review is worth what its findings survive: every finding was checked against the code or reproduced before anything changed. And a real run finds what tests cannot: a model the account does not have, a cache directory in a patch.
 
-## For lab participants
+## For AI Lab participants
 
-claude-codex-bridge is a case study from [a lab on using AI agents in business](https://ai-lab-agents.com), run by Dmitry Soloveev and Yakov Vasiliev. Participants go from chatting with a model to building agent systems that carry a task end to end: their own project, data pipelines, quick services and interfaces, with Claude Code, Codex and Cursor as the daily tools.
+claude-codex-bridge is a case study from [AI Lab](https://ai-lab-agents.com), a lab on using AI agents in business, run by Dmitry Soloveev and Yakov Vasiliev. Participants go from chatting with a model to building agent systems that carry a task end to end: their own project, data pipelines, quick services and interfaces, with Claude Code, Codex and Cursor as the daily tools.
 
 This repository shows one working pattern in full: two models from two companies, one orchestrating and one reviewing or executing, with files between them and a human deciding. Install it, run the demo, read the scripts.
 
